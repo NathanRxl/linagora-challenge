@@ -1,0 +1,11 @@
+# Pycharm
+.idea/
+
+# Data files
+data/
+
+# Submission files
+submissions/
+
+# Jupyter notebooks
+notebooks/

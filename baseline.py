@@ -1,114 +1,107 @@
-import random
-import operator
-import pandas as pd
 from collections import Counter
+import pandas as pd
+import random
+from time import time
+
+initial_time = time()
+
+print("Baseline script", end="\n\n")
 
 path_to_data = "data/"
 
-##########################
-# load some of the files #                           
-##########################
+# Load training data
+training_df = pd.read_csv(path_to_data + 'training_set.csv', index_col='sender')
+training_info_df = pd.read_csv(path_to_data + 'training_info.csv', index_col='mid')
 
-training = pd.read_csv(path_to_data + 'training_set.csv', sep=',', header=0)
+# Load test data
+test_df = pd.read_csv(path_to_data + 'test_set.csv', index_col='sender')
+# test_info_df = pd.read_csv(path_to_data + 'test_info.csv', index_col='mid')
 
-training_info = pd.read_csv(path_to_data + 'training_info.csv', sep=',', header=0)
+# ----------------------------
+# Create some handy structures
+# ----------------------------
 
-test = pd.read_csv(path_to_data + 'test_set.csv', sep=',', header=0)
+# Convert training set to dictionary
+mids_per_sender = dict()
+for sender, sender_series in training_df.iterrows():
+    mids_per_sender[sender] = [int(mid) for mid in sender_series['mids'].split(' ')]
 
-################################
-# create some handy structures #                    
-################################
-                            
-# convert training set to dictionary
-emails_ids_per_sender = {}
-for index, series in training.iterrows():
-    row = series.tolist()
-    sender = row[0]
-    ids = row[1:][0].split(' ')
-    emails_ids_per_sender[sender] = ids
+# Save all unique sender names
+all_training_senders = list(training_df.index)
 
-# save all unique sender names
-all_senders = list(emails_ids_per_sender.keys())
+# Create address book with frequency information for each user
+print("Create address book with frequency information for each user", end="\n\n")
+address_books = dict()
 
-# create address book with frequency information for each user
-address_books = {}
-i = 0
+for sender_nb, (sender, mids) in enumerate(mids_per_sender.items()):
+    sender_recipients = []
+    for mid in mids:
+        mid_recipients = (
+            [recipient for recipient in training_info_df.loc[mid]['recipients'].split(' ') if '@' in recipient]
+        )
+        sender_recipients.append(mid_recipients)
+    # Flatten sender recipients
+    sender_recipients = [recipient for recipients in sender_recipients for recipient in recipients]
+    # Save recipients counts
+    address_books[sender] = Counter(sender_recipients)
 
-for sender, ids in emails_ids_per_sender.items():
-    recs_temp = []
-    for my_id in ids:
-        recipients = training_info[training_info['mid']==int(my_id)]['recipients'].tolist()
-        recipients = recipients[0].split(' ')
-        # keep only legitimate email addresses
-        recipients = [rec for rec in recipients if '@' in rec]
-        recs_temp.append(recipients)
-    # flatten    
-    recs_temp = [elt for sublist in recs_temp for elt in sublist]
-    # compute recipient counts
-    rec_occ = dict(Counter(recs_temp))
-    # order by frequency
-    sorted_rec_occ = sorted(list(rec_occ.items()), key=operator.itemgetter(1), reverse = True)
-    # save
-    address_books[sender] = sorted_rec_occ
-    
-    if i % 10 == 0:
-        print(i)
-    i += 1
-  
-# save all unique recipient names    
-all_recs = list(set([elt[0] for sublist in list(address_books.values()) for elt in sublist]))
+    if (sender_nb + 1) % 12.5 == 0:
+        print("\t %d senders have been added to the address book for now" % (sender_nb + 1))
 
-# save all unique user names 
-all_users = []
-all_users.extend(all_senders)
-all_users.extend(all_recs)
-all_users = list(set(all_users))
+# Save all unique recipient names
+all_recipients = (
+    list(set([recipient for recipient_counters in address_books.values() for recipient in recipient_counters]))
+)
 
-#############
-# baselines #                           
-#############
+# Save all unique user names
+all_users = list(set(all_training_senders + all_recipients))
 
-# will contain email ids, predictions for random baseline, and predictions for frequency baseline
-predictions_per_sender = {}
+# ---------------------------------
+# Prediction strategies (baselines)
+# ---------------------------------
 
-# number of recipients to predict
-k = 10
+# Will contain email ids, predictions for random baseline, and predictions for frequency baseline
+predictions_per_sender = dict()
+nb_of_recipients_to_predict = 10
 
-for index, row in test.iterrows():
-    name_ids = row.tolist()
-    sender = name_ids[0]
+for sender, sender_series in test_df.iterrows():
     # get IDs of the emails for which recipient prediction is needed
-    ids_predict = name_ids[1].split(' ')
-    ids_predict = [int(my_id) for my_id in ids_predict]
-    random_preds = []
-    freq_preds = []
-    # select k most frequent recipients for the user
-    k_most = [elt[0] for elt in address_books[sender][:k]]
-    for id_predict in ids_predict:
+    mids_to_predict = [int(mid) for mid in sender_series['mids'].split(' ')]
+    random_predictions = []
+    most_frequent_predictions = []
+    # Select most frequent recipients for the sender
+    most_frequent_recipients = (
+        [recipient for recipient, frequency in address_books[sender].most_common(nb_of_recipients_to_predict)]
+    )
+    for mid_to_predict in mids_to_predict:
         # select k users at random
-        random_preds.append(random.sample(all_users, k))
+        random_predictions.append(random.sample(all_users, nb_of_recipients_to_predict))
         # for the frequency baseline, the predictions are always the same
-        freq_preds.append(k_most)
-    predictions_per_sender[sender] = [ids_predict,random_preds,freq_preds]	
+        most_frequent_predictions.append(most_frequent_recipients)
+    predictions_per_sender[sender] = {
+        "mids": mids_to_predict,
+        "random_prediction": random_predictions,
+        "most_frequent_prediction": most_frequent_predictions
+    }
 
-#################################################
-# write predictions in proper format for Kaggle #                           
-#################################################
+# Create Kaggle submission
 
-path_to_results = "submissions/"
+submission_folder_path = "submissions/"
 
-with open(path_to_results + 'predictions_random.txt', 'w') as my_file:
-    my_file.write('mid,recipients' + '\n')
-    for sender, preds in predictions_per_sender.items():
-        ids = preds[0]
-        random_preds = preds[1]
-        for index, my_preds in enumerate(random_preds):
-            my_file.write(str(ids[index]) + ',' + ' '.join(my_preds) + '\n')
+with open(submission_folder_path + 'predictions_random.txt', 'w') as random_predictions_file:
+    random_predictions_file.write('mid,recipients' + '\n')
+    for sender, prediction_dict in predictions_per_sender.items():
+        mids = prediction_dict["mids"]
+        random_predictions = prediction_dict["random_prediction"]
+        for mid_idx, random_prediction in enumerate(random_predictions):
+            random_predictions_file.write(str(mids[mid_idx]) + ',' + ' '.join(random_prediction) + '\n')
 
-with open(path_to_results + 'predictions_frequency.txt', 'w') as my_file:
-    my_file.write('mid,recipients' + '\n')
-    for sender, preds in predictions_per_sender.items():
-        ids = preds[0]
-        freq_preds = preds[2]
-        for index, my_preds in enumerate(freq_preds):
-            my_file.write(str(ids[index]) + ',' + ' '.join(my_preds) + '\n')
+with open(submission_folder_path + 'predictions_frequency.txt', 'w') as most_frequent_predictions_file:
+    most_frequent_predictions_file.write('mid,recipients' + '\n')
+    for sender, prediction_dict in predictions_per_sender.items():
+        mids = prediction_dict["mids"]
+        most_frequent_predictions = prediction_dict["most_frequent_prediction"]
+        for mid_idx, most_frequent_prediction in enumerate(most_frequent_predictions):
+            most_frequent_predictions_file.write(str(mids[mid_idx]) + ',' + ' '.join(most_frequent_prediction) + '\n')
+
+print("\nBaseline script completed in %0.2f seconds" % (time() - initial_time))

@@ -5,7 +5,7 @@ from time import time
 
 initial_time = time()
 
-print("Baseline script", end="\n\n")
+print("Pipeline script", end="\n\n")
 
 path_to_data = "data/"
 

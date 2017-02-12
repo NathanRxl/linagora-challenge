@@ -37,7 +37,9 @@ for sender_nb, (sender, mids) in enumerate(mids_per_sender.items()):
     sender_recipients = []
     for mid in mids:
         mid_recipients = (
-            [recipient for recipient in training_info_df.loc[mid]['recipients'].split(' ') if '@' in recipient]
+            [recipient
+             for recipient in training_info_df.loc[mid]['recipients'].split(' ')
+             if '@' in recipient]
         )
         sender_recipients.append(mid_recipients)
     # Flatten sender recipients
@@ -50,7 +52,9 @@ for sender_nb, (sender, mids) in enumerate(mids_per_sender.items()):
 
 # Save all unique recipient names
 all_recipients = (
-    list(set([recipient for recipient_counters in address_books.values() for recipient in recipient_counters]))
+    list(set([recipient
+              for recipient_counters in address_books.values()
+              for recipient in recipient_counters]))
 )
 
 # Save all unique user names
@@ -62,7 +66,6 @@ all_users = list(set(all_training_senders + all_recipients))
 
 # Will contain email ids, predictions for random baseline, and predictions for frequency baseline
 predictions_per_sender = dict()
-nb_of_recipients_to_predict = 10
 
 for sender, sender_series in test_df.iterrows():
     # get IDs of the emails for which recipient prediction is needed
@@ -71,11 +74,11 @@ for sender, sender_series in test_df.iterrows():
     most_frequent_predictions = []
     # Select most frequent recipients for the sender
     most_frequent_recipients = (
-        [recipient for recipient, frequency in address_books[sender].most_common(nb_of_recipients_to_predict)]
+        [recipient for recipient, frequency in address_books[sender].most_common(10)]
     )
     for mid_to_predict in mids_to_predict:
         # select k users at random
-        random_predictions.append(random.sample(all_users, nb_of_recipients_to_predict))
+        random_predictions.append(random.sample(all_users, 10))
         # for the frequency baseline, the predictions are always the same
         most_frequent_predictions.append(most_frequent_recipients)
     predictions_per_sender[sender] = {
@@ -86,22 +89,24 @@ for sender, sender_series in test_df.iterrows():
 
 # Create Kaggle submission
 
-submission_folder_path = "submissions/"
+sub_folder_path = "submissions/"
 
-with open(submission_folder_path + 'predictions_random.txt', 'w') as random_predictions_file:
-    random_predictions_file.write('mid,recipients' + '\n')
+with open(sub_folder_path + 'predictions_random.txt', 'w') as random_pred_file:
+    random_pred_file.write('mid,recipients' + '\n')
     for sender, prediction_dict in predictions_per_sender.items():
         mids = prediction_dict["mids"]
         random_predictions = prediction_dict["random_prediction"]
         for mid_idx, random_prediction in enumerate(random_predictions):
-            random_predictions_file.write(str(mids[mid_idx]) + ',' + ' '.join(random_prediction) + '\n')
+            random_pred_file.write(str(mids[mid_idx]) + ',' + ' '.join(random_prediction) + '\n')
 
-with open(submission_folder_path + 'predictions_frequency.txt', 'w') as most_frequent_predictions_file:
-    most_frequent_predictions_file.write('mid,recipients' + '\n')
+with open(sub_folder_path + 'predictions_frequency.txt', 'w') as most_frequent_pred_file:
+    most_frequent_pred_file.write('mid,recipients' + '\n')
     for sender, prediction_dict in predictions_per_sender.items():
         mids = prediction_dict["mids"]
         most_frequent_predictions = prediction_dict["most_frequent_prediction"]
         for mid_idx, most_frequent_prediction in enumerate(most_frequent_predictions):
-            most_frequent_predictions_file.write(str(mids[mid_idx]) + ',' + ' '.join(most_frequent_prediction) + '\n')
+            most_frequent_pred_file.write(
+                str(mids[mid_idx]) + ',' + ' '.join(most_frequent_prediction) + '\n'
+            )
 
 print("\nBaseline script completed in %0.2f seconds" % (time() - initial_time))

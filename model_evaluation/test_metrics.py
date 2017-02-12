@@ -22,7 +22,7 @@ class TestAveragePrecisionAt10(unittest.TestCase):
     def assertAveragePrecisionEquals(self, true_recipients, p):
         self.assertEqual(
             metrics.average_precision(
-                recipients_prediction=self.recipients_prediction,
+                recipients_pred=self.recipients_prediction,
                 true_recipients=true_recipients
             ), p
         )
@@ -108,7 +108,7 @@ class TestMeanAveragePrecisionAt10(unittest.TestCase):
     def assertMeanAveragePrecisionEquals(self, true_recipients, p):
         self.assertEqual(
             metrics.mean_average_precision(
-                recipients_predictions=self.recipients_predictions,
+                recipients_preds=self.recipients_predictions,
                 true_recipients_list=true_recipients
             ), p
         )

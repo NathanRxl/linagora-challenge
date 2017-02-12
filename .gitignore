@@ -12,3 +12,6 @@ notebooks/
 
 # References
 references/
+
+# Pycache
+*/__pycache__/*

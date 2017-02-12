@@ -22,7 +22,6 @@ def mean_average_precision(recipients_preds, true_recipients_list):
     Compute *mean* average precision@10 between 2 lists of lists
     (all recipients prediction for all messages)
     """
-
     if all(isinstance(recipients_pred, list) for recipients_pred in recipients_preds):
         each_prediction_average_precision = list()
 

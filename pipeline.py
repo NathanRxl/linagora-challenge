@@ -3,6 +3,9 @@ import pandas as pd
 import random
 from time import time
 
+from general_tools import Submissioner
+
+
 initial_time = time()
 
 print("Pipeline script", end="\n\n")
@@ -87,26 +90,30 @@ for sender, sender_series in test_df.iterrows():
         "most_frequent_prediction": most_frequent_predictions
     }
 
+
+# Build the mids_prediction dict for both baselines
+frequency_mids_prediction = {}
+random_mids_prediction = {}
+for sender in predictions_per_sender.keys():
+    mids = predictions_per_sender[sender]["mids"]
+    random_predictions = predictions_per_sender[sender]["random_prediction"]
+    frequency_predictions = predictions_per_sender[sender]["most_frequent_prediction"]
+
+    for mid_idx, prediction in enumerate(random_predictions):
+        random_mids_prediction[mids[mid_idx]] = prediction
+
+    for mid_idx, prediction in enumerate(frequency_predictions):
+        random_mids_prediction[mids[mid_idx]] = prediction
+
+
 # Create Kaggle submission
+submission_folder_path = "submissions/"
 
-sub_folder_path = "submissions/"
+Submissioner.create_submission(frequency_mids_prediction,
+        output_filename=submission_folder_path + "predictions_frequency.txt")
 
-with open(sub_folder_path + 'predictions_random.txt', 'w') as random_pred_file:
-    random_pred_file.write('mid,recipients' + '\n')
-    for sender, prediction_dict in predictions_per_sender.items():
-        mids = prediction_dict["mids"]
-        random_predictions = prediction_dict["random_prediction"]
-        for mid_idx, random_prediction in enumerate(random_predictions):
-            random_pred_file.write(str(mids[mid_idx]) + ',' + ' '.join(random_prediction) + '\n')
+Submissioner.create_submission(random_mids_prediction,
+        output_filename=submission_folder_path + "predictions_random.txt")
 
-with open(sub_folder_path + 'predictions_frequency.txt', 'w') as most_frequent_pred_file:
-    most_frequent_pred_file.write('mid,recipients' + '\n')
-    for sender, prediction_dict in predictions_per_sender.items():
-        mids = prediction_dict["mids"]
-        most_frequent_predictions = prediction_dict["most_frequent_prediction"]
-        for mid_idx, most_frequent_prediction in enumerate(most_frequent_predictions):
-            most_frequent_pred_file.write(
-                str(mids[mid_idx]) + ',' + ' '.join(most_frequent_prediction) + '\n'
-            )
 
 print("\nBaseline script completed in %0.2f seconds" % (time() - initial_time))

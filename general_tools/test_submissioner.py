@@ -18,7 +18,7 @@ def mids_prediction_from_file(submission_file):
 class TestSubmissioner(unittest.TestCase):
 
     def test_submissioner(self):
-        submission_folder = "submissions/"
+        submission_folder = "../submissions/"
         baseline_file = submission_folder + "predictions_frequency.txt"
         baseline_pred = mids_prediction_from_file(baseline_file)
 

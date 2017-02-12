@@ -8,7 +8,7 @@ def create_submission(mids_prediction, output_filename=None):
     """
     if output_filename is None:
         output_filename = (
-            "submissions/submission_"+ datetime.now().strftime("%Y_%m_%d_%M_%S") + ".txt"
+            "submissions/submission_" + datetime.now().strftime("%Y_%m_%d_%M_%S") + ".txt"
         )
 
     with open(output_filename, 'w') as output_file:

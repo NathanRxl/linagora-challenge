@@ -1,0 +1,15 @@
+# One line description of the change (less than 50 char)
+
+
+# Detailed description of the commmit (wrapped in 72 char)
+# Why this changed has been made ? What was the problem ?
+# If the problem was introduced by a previous commit, reference it
+
+
+# What is the solution ? What this solution changes for other parts
+# of the code ? What can be improved ?
+
+
+# Add [Close #issue-number] or [Fix #issue-number]
+# If the commit is related to an issue
+

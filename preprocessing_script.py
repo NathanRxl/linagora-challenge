@@ -1,13 +1,17 @@
 # TODO: 1-Preprocess invalid sender emails
-# TODO: 1T-Think of a way to extract features from the text : theme, "FYI", cited names "Hi Ben",
+# TODO: 1T-Think of a way to extract features from the text : theme, "FYI",
+# TODO: cited names "Hi Ben",
 # TODO: "Thanks David", ...
-# TODO: 2T-Try and use pre-trained word embeddings (e.g., Google News), part-of-speech taggers
+# TODO: 2T-Try and use pre-trained word embeddings (e.g., Google News),
+# TODO: part-of-speech taggers
 
 # TODO: 1G-Think of a way to use a well designed graph and build it
-# TODO: 1G-Nodes = all possible recipients, Edges = message sent at least once, Weight = number of
+# TODO: 1G-Nodes = all possible recipients, Edges = message sent at least once,
+# TODO: Weight = number of
 # TODO: messages sent
 # TODO: 2G-Use possible relations between recipients
-# TODO: (for example "Ben is almost always informed with Franck about football")
+# TODO: (for example "Ben is almost always informed with Franck about
+# TODO: football")
 
 import pandas as pd
 import preprocessing
@@ -21,17 +25,23 @@ path_to_data = "data/"
 
 
 print("\tLoad train data ... ", end="", flush=True)
-training_df = pd.read_csv(path_to_data + 'training_set.csv', index_col='sender')
-training_info_df = pd.read_csv(path_to_data + 'training_info.csv', index_col='mid')
+train_df = pd.read_csv(path_to_data + 'training_set.csv', index_col='sender')
+train_info_df = (
+    pd.read_csv(path_to_data + 'training_info.csv', index_col='mid')
+)
 print("OK")
 
 print("\tPreprocess train data ... ", end="", flush=True)
-preprocessed_training_df = preprocessing.tools.merge(training_df, training_info_df)
+preprocessed_training_df = preprocessing.tools.merge(train_df, train_info_df)
 print("OK")
 
 preprocessed_train_filename = "preprocessed_train.csv"
 
-print("\tCreate " + path_to_data + preprocessed_train_filename + " file ... ", end="", flush=True)
+print(
+    "\tCreate " + path_to_data + preprocessed_train_filename + " file ... ",
+    end="",
+    flush=True
+)
 preprocessed_training_df.to_csv(path_to_data + preprocessed_train_filename)
 print("OK", end="\n\n")
 
@@ -47,9 +57,16 @@ print("OK")
 
 preprocessed_test_filename = "preprocessed_test.csv"
 
-print("\tCreate " + path_to_data + preprocessed_test_filename + " file ... ", end="", flush=True)
+print(
+    "\tCreate " + path_to_data + preprocessed_test_filename + " file ... ",
+    end="",
+    flush=True
+)
 preprocessed_test_df.to_csv(path_to_data + preprocessed_test_filename)
 print("OK")
 
 
-print("\nPreprocessing script completed in %0.2f seconds" % (time() - initial_time))
+print(
+    "\nPreprocessing script completed in %0.2f seconds"
+    % (time() - initial_time)
+)

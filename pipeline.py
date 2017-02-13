@@ -12,7 +12,9 @@ path_to_data = "data/"
 
 print("\tLoad preprocessed train data ... ", end="", flush=True)
 # Load training data
-train_df = pd.read_csv(path_to_data + 'preprocessed_train.csv', index_col="mid")
+train_df = (
+    pd.read_csv(path_to_data + 'preprocessed_train.csv', index_col="mid")
+)
 
 # Split training data into X_train and y_train
 X_train, y_train = split_xy(train_df)
@@ -38,7 +40,11 @@ y_pred = model.predict(X_test)
 print("OK", end="\n\n")
 
 
-print("\tCreate Kaggle submission in submissions/ folder ... ", end="", flush=True)
+print(
+    "\tCreate Kaggle submission in submissions/ folder ... ",
+    end="",
+    flush=True
+)
 # Create Kaggle submission
 submission_folder_path = "submissions/"
 

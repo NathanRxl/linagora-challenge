@@ -1,7 +1,7 @@
 from collections import Counter
 
 
-class LinagoraFrequencyPredictor:
+class FrequencyPredictor:
     def __init__(self):
         """
         self.address_books:
@@ -13,7 +13,7 @@ class LinagoraFrequencyPredictor:
         self.all_train_senders = list()
         self.all_users = list()
 
-    def fit(self, X_train, y_train):
+    def fit(self, X_train, y_train, verbose=True):
         # Save all unique sender names in X
         self.all_train_senders = X_train["sender"].unique().tolist()
         # Save all unique user names
@@ -39,6 +39,21 @@ class LinagoraFrequencyPredictor:
 
         # Ultimately change the format of all_users
         self.all_users = list(self.all_users)
+
+        if verbose:
+            # Compute and print some statistics about the train set
+            ab_mean_size = 0
+            nb_train_senders = len(self.all_train_senders)
+
+            for user in self.all_train_senders:
+                ab_mean_size += len(self.address_books[user]) / nb_train_senders
+
+            print("\t\tNumber of unique senders in the train:", nb_train_senders)
+            print("\t\tUser address book mean size:", int(ab_mean_size))
+            print(
+                "\t\tNumber of unique addresses known in the train:",
+                len(self.all_users)
+            )
 
     def predict(self, X_test):
         # Will contain message ids and predictions for frequency predictions

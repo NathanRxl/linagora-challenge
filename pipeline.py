@@ -2,7 +2,7 @@ import pandas as pd
 from time import time
 
 from general_tools import split_xy, true_recipients, Submissioner
-from models import LinagoraFrequencyPredictor
+from linagora_models import FrequencyPredictor
 from model_evaluation import metrics
 
 initial_time = time()
@@ -22,18 +22,21 @@ X_train, y_train = split_xy(train_df)
 print("OK")
 
 # Initiate the model
-model = LinagoraFrequencyPredictor()
+model = FrequencyPredictor()
 
-print("\tFit the model to the train data ... ", end="", flush=True)
+print("\tFit the model to the train data ... ")
 # Fit the model with the training data
 model.fit(X_train, y_train)
-print("OK", end="\n\n")
 
 # Compute the training score
+print("\tTraining score: ", end="", flush=True)
 y_predict_train = model.predict(X_train)
 true_mids_prediction = true_recipients(y_train)
-train_score = metrics.mean_average_precision(y_predict_train, true_mids_prediction)
-print("\tTraining score :", round(train_score, 5), end="\n\n")
+train_score = metrics.mean_average_precision(
+    y_predict_train,
+    true_mids_prediction
+)
+print(round(train_score, 5), end="\n\n")
 
 print("\tLoad preprocessed test data ... ", end="", flush=True)
 # Load test data

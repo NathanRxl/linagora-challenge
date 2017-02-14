@@ -33,4 +33,4 @@ def mean_average_precision(mids_prediction, mids_true_recipients):
             average_precision(prediction, mids_true_recipients[mid])
         )
 
-    return np.mean(each_prediction_average_precision)
+    return round(np.mean(each_prediction_average_precision), 5)

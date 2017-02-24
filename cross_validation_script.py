@@ -5,7 +5,9 @@ from sklearn.model_selection import KFold
 
 from model_evaluation import metrics
 from general_tools import split_xy, true_recipients
-from linagora_models import FrequencyPredictor, LinagoraWinningPredictor
+from linagora_models import (FrequencyPredictor, LinagoraWinningPredictor,
+    LinagoraTfidfPredictor, LinagoraKnnPredictor
+)
 
 
 initial_time = time()
@@ -16,8 +18,10 @@ print("Cross-validation script", end="\n\n")
 path_to_data = "data/"
 
 # Load data
-complete_train_df = pd.read_csv(path_to_data + 'preprocessed_train.csv',
-                                index_col="mid", parse_dates=["date"])
+# complete_train_df = pd.read_csv(path_to_data + 'preprocessed_train.csv',
+#                                 index_col="mid", parse_dates=["date"])
+complete_train_df = pd.read_csv(path_to_data + 'text_preprocessed_train.csv',
+                                index_col="mid")
 complete_train_index = complete_train_df.index.tolist()
 
 # Use KFold from sklearn
@@ -37,7 +41,8 @@ for n_fold, (train_fold_index, test_fold_index) in enumerate(cv_split_indexes):
     X_test, y_test = split_xy(test_fold_df)
 
     # Fit model and make predictions
-    model = LinagoraWinningPredictor(recency=[20], non_recipients=1.0)
+    model = LinagoraWinningPredictor()
+    # model = LinagoraKnnPredictor()
     model.fit(X_train, y_train)
 
     precomputed_cooccurrences = (
@@ -46,10 +51,11 @@ for n_fold, (train_fold_index, test_fold_index) in enumerate(cv_split_indexes):
     y_predict = model.predict(
         X_test,
         use_cooccurrences=False,
-        precomputed_cooccurrences=precomputed_cooccurrences,
+        # precomputed_cooccurrences=precomputed_cooccurrences,
         y_true=None,
         store_scores=False
     )
+    # y_predict = model.predict(X_test)
 
     # Compute true mids_prediction dict from df
     y_test_true_recipients = true_recipients(y_test)

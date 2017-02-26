@@ -14,7 +14,8 @@ path_to_data = "data/"
 print("\tLoad preprocessed train data ... ", end="", flush=True)
 # Load training data
 train_df = (
-    pd.read_csv(path_to_data + 'preprocessed_train.csv', index_col="mid")
+    pd.read_csv(path_to_data + 'preprocessed_train.csv',
+                index_col="mid", parse_dates=["date"])
 )
 
 # Split training data into X_train and y_train
@@ -22,7 +23,7 @@ X_train, y_train = split_xy(train_df)
 print("OK")
 
 # Initiate the model
-model = FrequencyPredictor()
+model = FrequencyPredictor(recency=None)
 
 print("\tFit the model to the train data ... ")
 # Fit the model with the training data
@@ -40,7 +41,8 @@ print(round(train_score, 5), end="\n\n")
 
 print("\tLoad preprocessed test data ... ", end="", flush=True)
 # Load test data
-X_test = pd.read_csv(path_to_data + 'preprocessed_test.csv', index_col="mid")
+X_test = pd.read_csv(path_to_data + 'preprocessed_test.csv',
+                     index_col="mid", parse_dates=["date"])
 print("OK")
 
 print("\tMake predictions on test data ... ", end="", flush=True)

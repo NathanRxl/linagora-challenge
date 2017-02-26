@@ -32,7 +32,10 @@ train_info_df = (
 print("OK")
 
 print("\tPreprocess train data ... ", end="", flush=True)
-preprocessed_training_df = preprocessing.tools.merge(train_df, train_info_df)
+preprocessed_train_df = preprocessing.tools.merge(train_df, train_info_df)
+preprocessed_train_df['date'] = (
+    preprocessing.tools.preprocess_dates(preprocessed_train_df)
+)
 print("OK")
 
 preprocessed_train_filename = "preprocessed_train.csv"
@@ -42,7 +45,7 @@ print(
     end="",
     flush=True
 )
-preprocessed_training_df.to_csv(path_to_data + preprocessed_train_filename)
+preprocessed_train_df.to_csv(path_to_data + preprocessed_train_filename)
 print("OK", end="\n\n")
 
 
@@ -53,6 +56,9 @@ print("OK")
 
 print("\tPreprocess test data ... ", end="", flush=True)
 preprocessed_test_df = preprocessing.tools.merge(test_df, test_info_df)
+preprocessed_test_df['date'] = (
+    preprocessing.tools.preprocess_dates(preprocessed_test_df)
+)
 print("OK")
 
 preprocessed_test_filename = "preprocessed_test.csv"

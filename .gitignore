@@ -9,6 +9,8 @@ submissions/
 
 # Jupyter notebooks
 notebooks/
+*.ipynb
+.ipynb*
 
 # References
 references/

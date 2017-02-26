@@ -17,7 +17,7 @@ path_to_data = "data/"
 
 # Load data
 complete_train_df = pd.read_csv(path_to_data + 'preprocessed_train.csv',
-                                index_col="mid")
+                                index_col="mid", parse_dates=["date"])
 complete_train_index = complete_train_df.index.tolist()
 
 # Use KFold from sklearn
@@ -37,7 +37,7 @@ for n_fold, (train_fold_index, test_fold_index) in enumerate(cv_split_indexes):
     X_test, y_test = split_xy(test_fold_df)
 
     # Fit model and make predictions
-    model = FrequencyPredictor()
+    model = FrequencyPredictor(recency=None)
     model.fit(X_train, y_train, verbose=False)
     y_predict = model.predict(X_test)
 

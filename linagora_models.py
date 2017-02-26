@@ -2,7 +2,7 @@ from collections import Counter
 
 
 class FrequencyPredictor:
-    def __init__(self):
+    def __init__(self, recency=None):
         """
         self.address_books:
             type: dict
@@ -12,6 +12,8 @@ class FrequencyPredictor:
         self.address_books = dict()
         self.all_train_senders = list()
         self.all_users = list()
+        self.recency = recency
+        self.recent_address_books = dict()
 
     def fit(self, X_train, y_train, verbose=True):
         # Save all unique sender names in X
@@ -22,8 +24,10 @@ class FrequencyPredictor:
         for sender_nb, sender in enumerate(self.all_train_senders):
 
             sender_recipients = []
+
             sender_idx = X_train["sender"] == sender
-            for recipients in y_train[sender_idx]["recipients"].tolist():
+
+            for recipients in y_train.loc[sender_idx]["recipients"].tolist():
                 sender_recipients.extend(
                     [recipient
                      for recipient in recipients.split(' ')
@@ -36,6 +40,26 @@ class FrequencyPredictor:
             # Save all unique recipient names
             for recipient in sender_recipients:
                 self.all_users.add(recipient)
+
+            if self.recency is not None:
+                recent_sender_idx = (
+                    X_train[X_train["sender"] == sender]
+                    .sort_values(by=["date"], ascending=[1])
+                    .index.tolist()[-self.recency:]
+                )
+
+                recent_sender_recipients_list = (
+                    y_train.loc[recent_sender_idx]["recipients"].tolist()
+                )
+                for recipients in recent_sender_recipients_list:
+                    sender_recipients.extend(
+                        [recipient
+                         for recipient in recipients.split(' ')
+                         if '@' in recipient]
+                    )
+
+                # Save recipients counts
+                self.recent_address_books[sender] = Counter(sender_recipients)
 
         # Ultimately change the format of all_users
         self.all_users = list(self.all_users)
@@ -63,8 +87,27 @@ class FrequencyPredictor:
         all_test_senders = X_test["sender"].unique().tolist()
 
         for sender in all_test_senders:
-            # Select most frequent recipients of the sender
-            addrs_book_most_common = self.address_books[sender].most_common(10)
+            if self.recency is not None:
+                recent_addrs_book_most_common = (
+                    self.recent_address_books[sender].most_common(10)
+                )
+                addrs_book_most_common = recent_addrs_book_most_common
+                nb_pred = len(recent_addrs_book_most_common)
+                if nb_pred < 10:
+                    address_book_filtered = {
+                        recipient: frequency
+                        for recipient, frequency
+                        in self.address_books[sender].items()
+                        if recipient not in recent_addrs_book_most_common
+                    }
+                    addrs_book_most_common += (
+                        Counter(address_book_filtered)
+                        .most_common(10 - nb_pred)
+                    )
+            else:
+                # Select most frequent recipients of the sender
+                addrs_book_most_common = self.address_books[sender].most_common(10)
+
             most_frequent_recipients = (
                 [recipient for recipient, frequency in addrs_book_most_common]
             )

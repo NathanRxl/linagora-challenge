@@ -26,7 +26,10 @@ kf = KFold(n_splits=n_splits, shuffle=True, random_state=2)
 cv_scores = []
 cv_split_indexes = kf.split(complete_train_index)
 for n_fold, (train_fold_index, test_fold_index) in enumerate(cv_split_indexes):
-    print("Start working on fold number :", n_fold + 1)
+    print(
+        "Start working on fold number", n_fold + 1, "... ",
+        end="", flush=True
+    )
     train_fold_df = complete_train_df.iloc[train_fold_index]
     test_fold_df = complete_train_df.iloc[test_fold_index]
 
@@ -46,6 +49,7 @@ for n_fold, (train_fold_index, test_fold_index) in enumerate(cv_split_indexes):
         mids_prediction=y_predict,
         mids_true_recipients=y_test_true_recipients
     )
+    print(fold_score)
     cv_scores.append(fold_score)
 
 

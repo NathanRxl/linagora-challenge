@@ -23,7 +23,7 @@ X_train, y_train = split_xy(train_df)
 print("OK")
 
 # Initiate the model
-model = FrequencyPredictor(recency=None)
+model = FrequencyPredictor(recency=2500)
 
 print("\tFit the model to the train data ... ")
 # Fit the model with the training data

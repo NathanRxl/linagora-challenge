@@ -5,7 +5,7 @@ from sklearn.model_selection import KFold
 
 from model_evaluation import metrics
 from general_tools import split_xy, true_recipients
-from linagora_models import FrequencyPredictor
+from linagora_models import FrequencyPredictor, LinagoraWinningPredictor
 
 
 initial_time = time()
@@ -37,8 +37,8 @@ for n_fold, (train_fold_index, test_fold_index) in enumerate(cv_split_indexes):
     X_test, y_test = split_xy(test_fold_df)
 
     # Fit model and make predictions
-    model = FrequencyPredictor(recency=None)
-    model.fit(X_train, y_train, verbose=False)
+    model = FrequencyPredictor()
+    model.fit(X_train, y_train)
     y_predict = model.predict(X_test)
 
     # Compute true mids_prediction dict from df

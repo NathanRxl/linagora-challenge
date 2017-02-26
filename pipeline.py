@@ -59,7 +59,7 @@ submission_folder_path = "submissions/"
 
 Submissioner.create_submission(
     y_pred,
-    output_filename=submission_folder_path + "predictions_frequency.txt"
+    submission_folder_path=submission_folder_path
 )
 print("OK")
 

@@ -37,7 +37,7 @@ for n_fold, (train_fold_index, test_fold_index) in enumerate(cv_split_indexes):
     X_test, y_test = split_xy(test_fold_df)
 
     # Fit model and make predictions
-    model = FrequencyPredictor()
+    model = LinagoraWinningPredictor(recency=[20], non_recipients=0.2)
     model.fit(X_train, y_train)
     y_predict = model.predict(X_test)
 

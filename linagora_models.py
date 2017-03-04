@@ -7,7 +7,7 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 
 
-def compute_ab(X_train, y_train, sender, recency=None):
+def compute_ab(sender, X_train, y_train, recency=None):
     sender_recipients = list()
 
     sender_idx = X_train["sender"] == sender
@@ -26,9 +26,7 @@ def compute_ab(X_train, y_train, sender, recency=None):
 
     for recipients in sender_recipients_list:
         sender_recipients.extend(
-            [recipient
-             for recipient in recipients.split(' ')
-             if '@' in recipient]
+            [recipient for recipient in recipients.split(' ')]
         )
     # Return recipients counts
     return Counter(sender_recipients)
@@ -55,27 +53,26 @@ class LinagoraWinningPredictor:
         for mid in X_train[sender_idx].index.tolist():
             potential_non_recipients = list(set(global_sender_ab_list))
             # Fill lines with target 1
-            recipients = set(y_train.loc[mid]["recipients"].split(" "))
+            recipients = y_train.loc[mid]["recipients"].split(" ")
             for recipient in recipients:
-                if '@' in recipient:
-                    i_ytr.append(1)
-                    potential_non_recipients.remove(recipient)
-                    # Add global frequency feature
-                    i_Xtr["global_sent_frequency"].append(
-                        self.global_ab[sender][recipient]
-                        / len(global_sender_ab_list)
-                    )
-                    # Add recency features
-                    if self.recency is not None:
-                        for recency in self.recency:
-                            recency_feature_name = (
-                                "{}_recent_sent_frequency".format(recency)
-                            )
-                            sender_recent_ab = self.recent_ab[sender][recency]
-                            i_Xtr[recency_feature_name].append(
-                                sender_recent_ab[recipient]
-                                / len(list(sender_recent_ab.elements()))
-                            )
+                i_ytr.append(1)
+                potential_non_recipients.remove(recipient)
+                # Add global frequency feature
+                i_Xtr["global_sent_frequency"].append(
+                    self.global_ab[sender][recipient]
+                    / len(global_sender_ab_list)
+                )
+                # Add recency features
+                if self.recency is not None:
+                    for recency in self.recency:
+                        recency_feature_name = (
+                            "{}_recent_sent_frequency".format(recency)
+                        )
+                        sender_recent_ab = self.recent_ab[sender][recency]
+                        i_Xtr[recency_feature_name].append(
+                            sender_recent_ab[recipient]
+                            / len(list(sender_recent_ab.elements()))
+                        )
             # Fill lines with target 0
             nb_non_recipients_to_select = min(
                 len(potential_non_recipients),
@@ -145,14 +142,14 @@ class LinagoraWinningPredictor:
             self.logreg[sender] = LogisticRegression(C=100000, n_jobs=-1)
             # Compute sender address book
             self.global_ab[sender] = (
-                compute_ab(X_train, y_train, sender, recency=None)
+                compute_ab(sender, X_train, y_train, recency=None)
             )
             # Compute sender recent address book
             if self.recency is not None:
                 self.recent_ab[sender] = dict()
                 for recency in self.recency:
                     self.recent_ab[sender][recency] = (
-                        compute_ab(X_train, y_train, sender, recency=recency)
+                        compute_ab(sender, X_train, y_train, recency=recency)
                     )
             # Build internal train sets
             sender_internal_Xtr, sender_internal_ytr = (

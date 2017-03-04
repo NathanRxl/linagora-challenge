@@ -9,8 +9,7 @@ def true_recipients(y_df):
     predictions = y_df["recipients"]
     for mid in mids:
         recipients = predictions.loc[mid]
-        prediction = [recipient for recipient in recipients.split(' ')
-                                if '@' in recipient]
+        prediction = [recipient for recipient in recipients.split(' ')]
         y_test[mid] = prediction
 
     return y_test

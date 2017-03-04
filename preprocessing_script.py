@@ -36,6 +36,13 @@ preprocessed_train_df = preprocessing.merge(train_df, train_info_df)
 preprocessed_train_df['date'] = (
     preprocessing.preprocess_dates(preprocessed_train_df)
 )
+preprocessed_train_df['recipients'] = (
+    preprocessed_train_df['recipients'].apply(
+        lambda recipients: [recipient
+                            for recipient in set(recipients.split(" "))
+                            if '@' in recipient]
+    ).apply(lambda recipient_list: " ".join(recipient_list))
+)
 print("OK")
 
 preprocessed_train_filename = "preprocessed_train.csv"

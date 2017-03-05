@@ -36,6 +36,7 @@ preprocessed_train_df = preprocessing.merge(train_df, train_info_df)
 preprocessed_train_df['date'] = (
     preprocessing.preprocess_dates(preprocessed_train_df)
 )
+preprocessed_train_df = preprocessed_train_df[preprocessed_train_df['date'] >= '2001-06']
 preprocessed_train_df['recipients'] = (
     preprocessed_train_df['recipients'].apply(
         lambda recipients: [recipient

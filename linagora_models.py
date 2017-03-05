@@ -235,12 +235,12 @@ class FrequencyPredictor:
 
             # Save complete recipients counts
             self.address_books[sender] = (
-                compute_ab(X_train, y_train, sender, recency=None)
+                compute_ab(sender, X_train, y_train, recency=None)
             )
 
             # Save recent recipients counts
             self.recent_address_books[sender] = (
-                compute_ab(X_train, y_train, sender, recency=self.recency)
+                compute_ab(sender, X_train, y_train, recency=self.recency)
             )
 
         if verbose:

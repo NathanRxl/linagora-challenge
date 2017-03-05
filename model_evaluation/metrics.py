@@ -28,9 +28,9 @@ def mean_average_precision(mids_prediction, mids_true_recipients):
 
     each_prediction_average_precision = list()
 
-    for mid, prediction in mids_prediction.items():
+    for mid, true_recipients in mids_true_recipients.items():
         each_prediction_average_precision.append(
-            average_precision(prediction, mids_true_recipients[mid])
+            average_precision(mids_prediction[mid], true_recipients)
         )
 
     return round(np.mean(each_prediction_average_precision), 5)

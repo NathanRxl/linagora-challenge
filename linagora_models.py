@@ -4,11 +4,14 @@ import random
 import warnings
 import tables
 from time import time
+from datetime import datetime
+
+from model_evaluation import metrics
+import general_tools
 
 import numpy as np
 import pandas as pd
 from lightgbm import LGBMClassifier
-from sklearn.linear_model import LogisticRegression
 
 
 def memoize(f):
@@ -145,7 +148,7 @@ class LinagoraWinningPredictor:
                         i_Xtr[recency_feature_name].append(0.0)
 
         # Return the internal train set
-        return pd.DataFrame(data=i_Xtr), i_ytr
+        return pd.DataFrame.from_dict(data=i_Xtr, orient='columns'), i_ytr
 
     def fit(self, X_train, y_train):
         # Save all unique sender names in X
@@ -209,7 +212,10 @@ class LinagoraWinningPredictor:
                             sender_recent_ab[recipient]
                             / len(list(sender_recent_ab.elements()))
                         )
-            i_Xte[mid] = pd.DataFrame(data=i_Xte[mid])
+            i_Xte[mid] = pd.DataFrame.from_dict(
+                data=i_Xte[mid],
+                orient='columns'
+            )
 
         # Return the internal test set
         return i_Xte
@@ -230,24 +236,28 @@ class LinagoraWinningPredictor:
 
         return n_co_occurences / n_messages_to_contact_i
 
-    def predict(self, X_test, use_cooccurences=True,
-                store=None, precomputed=None):
+    def predict(self, X_test, y_true=None, store_scores=True,
+                use_cooccurences=True, store_i_Xte=None,
+                precomputed_i_Xte=None):
         predictions = dict()
         # Save all unique sender names in X
         all_test_senders = X_test["sender"].unique().tolist()
-        if store is not None:
-            hdf_file = pd.HDFStore(store)
+        if store_i_Xte is not None:
+            hdf_file = pd.HDFStore(store_i_Xte)
         print("\tBuild i_Xte and predict for each sender ... ")
+        if y_true is not None:
+            scores = dict()
         for sender in all_test_senders:
+            t0 = time()
             sender_idx = X_test["sender"] == sender
-            if precomputed is not None:
+            if precomputed_i_Xte is not None:
                 i_Xte = dict()
                 for mid in X_test[sender_idx].index.tolist():
-                    i_Xte[mid] = pd.read_hdf(precomputed, key="{}/{}".format(sender, mid))
+                    i_Xte[mid] = pd.read_hdf(precomputed_i_Xte, key="{}/{}".format(sender, mid))
                     assert(self._build_internal_test_set(sender, X_test)[mid].equals(i_Xte[mid]))
             else:
                 i_Xte = self._build_internal_test_set(sender, X_test)
-            if store is not None:
+            if store_i_Xte is not None:
                 warnings.filterwarnings(
                     'ignore',
                     category=tables.NaturalNameWarning
@@ -255,7 +265,7 @@ class LinagoraWinningPredictor:
                 for mid in X_test[sender_idx].index.tolist():
                     hdf_file.put("{}/{}".format(sender, mid), i_Xte[mid])
             print(
-                "\t\tPredict for {} ... ".format(sender),
+                "\t\tPredict for {}".format(sender).ljust(52, " ") + "... ",
                 end="",
                 flush=True
             )
@@ -311,10 +321,33 @@ class LinagoraWinningPredictor:
 
                 prediction = global_sender_ab_array[best_recipients]
                 predictions[mid] = prediction
-            print("OK")
-        if store is not None:
+
+            if y_true is not None:
+                y_sender_true_recipients = (
+                    general_tools.true_recipients(y_true[sender_idx])
+                )
+                scores[sender] = metrics.mean_average_precision(
+                    mids_prediction=predictions,
+                    mids_true_recipients=y_sender_true_recipients
+                )
+                print(
+                    "score %.5f | execution time %.5f"
+                    % (scores[sender], time() - t0)
+                )
+            else:
+                print("execution time %.5f" % (time() - t0))
+
+        if store_i_Xte is not None:
             # close hdf file
             hdf_file.close()
+        if y_true is not None and store_scores:
+            score_df = pd.DataFrame.from_dict(data=scores, orient='index')
+            score_df.columns = ["score"]
+            score_df.to_csv(
+                "data/scores_"
+                + datetime.now().strftime("%d_%m_%H_%M_%S")
+                + ".csv", index=True, index_label="sender"
+            )
         return predictions
 
 

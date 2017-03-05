@@ -42,7 +42,8 @@ for n_fold, (train_fold_index, test_fold_index) in enumerate(cv_split_indexes):
     y_predict = model.predict(
         X_test,
         use_cooccurences=False,
-        precomputed="data/hdf_Xte_cv_{}-3.h5".format(n_fold + 1)
+        y_true=y_test,
+        store_scores=False
     )
 
     # Compute true mids_prediction dict from df

@@ -31,7 +31,11 @@ model.fit(X_train, y_train)
 
 # Compute the training score
 print("\tTraining score: ", end="", flush=True)
-y_predict_train = model.predict(X_train, use_cooccurences=False)
+y_predict_train = model.predict(
+    X_train,
+    y_true=y_train,
+    use_cooccurences=False
+)
 true_mids_prediction = true_recipients(y_train)
 train_score = metrics.mean_average_precision(
     y_predict_train,
@@ -49,8 +53,7 @@ print("\tMake predictions on test data ... ", end="", flush=True)
 # Predict the labels of X_test
 y_pred = model.predict(
     X_test,
-    use_cooccurences=False,
-    precomputed="data/hdf_Xte_pipeline.h5"
+    use_cooccurences=False
 )
 print("OK", end="\n\n")
 

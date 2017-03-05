@@ -7,6 +7,15 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 
 
+def memoize(f):
+    cache = dict()
+    return (
+        lambda *args:
+        cache[args] if args in cache
+        else cache.update({args: f(*args)}) or cache[args]
+    )
+
+
 def compute_ab(sender, X_train, y_train, recency=None):
     sender_recipients = list()
 
@@ -42,6 +51,8 @@ class LinagoraWinningPredictor:
         self.recent_ab = dict()
         self.all_users = list()
         self.non_recipients = non_recipients
+        self.X_train = None
+        self.y_train = None
 
     def _build_internal_train_sets(self, sender, X_train, y_train):
         # i_Xtr for internal X train
@@ -136,10 +147,19 @@ class LinagoraWinningPredictor:
         # Save all unique sender names in X
         self.all_train_senders = X_train["sender"].unique().tolist()
         self.all_users = self.all_train_senders
+        # Store X_train and y_train in the model to access it in predict
+        # and avoid unnecessary computations
+        self.X_train = X_train
+        self.y_train = y_train
 
+        print(
+            "\n\tBuild i_Xtr and fit model for each sender ... ",
+            end="",
+            flush=True
+        )
         for sender in self.all_train_senders:
             # Define the sender predictive model
-            self.logreg[sender] = LogisticRegression(C=100000, n_jobs=-1)
+            self.logreg[sender] = LogisticRegression(C=1000000, n_jobs=-1)
             # Compute sender address book
             self.global_ab[sender] = (
                 compute_ab(sender, X_train, y_train, recency=None)
@@ -157,6 +177,7 @@ class LinagoraWinningPredictor:
             )
             # Fit sender logreg to the internal train sets
             self.logreg[sender].fit(sender_internal_Xtr, sender_internal_ytr)
+        print("OK")
 
     def _build_internal_test_set(self, sender, X_test):
         # i_Xte for internal X test
@@ -189,14 +210,35 @@ class LinagoraWinningPredictor:
         # Return the internal test set
         return i_Xte
 
+    @memoize
+    def compute_cooccurence(self, sender, contact_i, contact_j):
+
+        if contact_i == contact_j:
+            return 0.0
+
+        n_co_occurences = 0
+        sender_idx = self.X_train["sender"] == sender
+        for mid in self.X_train[sender_idx].index.tolist():
+            mid_recipients = self.y_train.loc[mid]["recipients"].split(" ")
+            if contact_i in mid_recipients and contact_j in mid_recipients:
+                n_co_occurences += 1
+        n_messages_to_contact_i = self.global_ab[sender][contact_i]
+
+        return n_co_occurences / n_messages_to_contact_i
+
     def predict(self, X_test):
         predictions = dict()
         # Save all unique sender names in X
         all_test_senders = X_test["sender"].unique().tolist()
+        print("\tBuild i_Xte and predict for each sender ... ")
         for sender in all_test_senders:
             i_Xte = self._build_internal_test_set(sender, X_test)
-
             sender_idx = X_test["sender"] == sender
+            print(
+                "\t\tPredict for {} ... ".format(sender),
+                end="",
+                flush=True
+            )
             for mid in X_test[sender_idx].index.tolist():
                 mid_pred_probas = (
                     self.logreg[sender].predict_proba(i_Xte[mid])[:, 1]
@@ -206,9 +248,46 @@ class LinagoraWinningPredictor:
                         list(set(list(self.global_ab[sender].elements())))
                     )
                 )
-                best_recipients = np.argsort(mid_pred_probas)[::-1][:10]
+                best_recipients = np.argsort(mid_pred_probas)[::-1][:2]
+
+                next_best_pred_probas = mid_pred_probas.copy()
+                next_best_pred_probas[best_recipients[1]] = 0.0
+                next_second_best_pred_probas = mid_pred_probas.copy()
+                next_second_best_pred_probas[best_recipients[0]] = 0.0
+                for n_pred in range(4):
+
+                    co_occurences_best, co_occurences_second_best = (
+                        np.zeros(shape=(len(global_sender_ab_list), )),
+                        np.zeros(shape=(len(global_sender_ab_list), ))
+                    )
+
+                    for r, recipient in enumerate(global_sender_ab_list):
+                        co_occurences_best[r] = self.compute_cooccurence(
+                            sender,
+                            global_sender_ab_list[best_recipients[2 * n_pred]],
+                            recipient
+                        )
+                        co_occurences_second_best[r] = self.compute_cooccurence(
+                            sender,
+                            global_sender_ab_list[best_recipients[2 * n_pred + 1]],
+                            recipient
+                        )
+
+                    next_best_pred_probas = next_best_pred_probas * co_occurences_best
+                    next_best_pred = np.argmax(next_best_pred_probas)
+
+                    next_second_best_pred_probas = next_second_best_pred_probas * co_occurences_second_best
+                    next_second_best_pred = np.argmax(next_second_best_pred_probas)
+
+                    best_recipients = np.append(best_recipients, next_best_pred)
+                    best_recipients = np.append(best_recipients, next_second_best_pred)
+
+                    next_best_pred_probas[next_second_best_pred] = 0.0
+                    next_second_best_pred_probas[next_best_pred] = 0.0
+
                 prediction = global_sender_ab_list[best_recipients]
                 predictions[mid] = prediction
+            print("OK")
 
         return predictions
 

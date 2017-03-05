@@ -7,6 +7,7 @@ from time import time
 
 import numpy as np
 import pandas as pd
+from lightgbm import LGBMClassifier
 from sklearn.linear_model import LogisticRegression
 
 
@@ -48,8 +49,8 @@ class LinagoraWinningPredictor:
     def __init__(self, recency=None, non_recipients=0.2):
         self.recency = recency
         self.all_train_senders = list()
-        # Dict of logreg (one per user)
-        self.logreg = dict()
+        # Dict of lgbm (one per user)
+        self.lgbm = dict()
         self.global_ab = dict()
         self.recent_ab = dict()
         self.all_users = list()
@@ -162,7 +163,7 @@ class LinagoraWinningPredictor:
         )
         for sender in self.all_train_senders:
             # Define the sender predictive model
-            self.logreg[sender] = LogisticRegression(C=1000000, n_jobs=-1)
+            self.lgbm[sender] = LGBMClassifier()
             # Compute sender address book
             self.global_ab[sender] = (
                 compute_ab(sender, X_train, y_train, recency=None)
@@ -179,7 +180,7 @@ class LinagoraWinningPredictor:
                 self._build_internal_train_sets(sender, X_train, y_train)
             )
             # Fit sender logreg to the internal train sets
-            self.logreg[sender].fit(sender_internal_Xtr, sender_internal_ytr)
+            self.lgbm[sender].fit(sender_internal_Xtr, sender_internal_ytr)
         print("OK")
 
     def _build_internal_test_set(self, sender, X_test):
@@ -260,7 +261,7 @@ class LinagoraWinningPredictor:
             )
             for mid in X_test[sender_idx].index.tolist():
                 mid_pred_probas = (
-                    self.logreg[sender].predict_proba(i_Xte[mid])[:, 1]
+                    self.lgbm[sender].predict_proba(i_Xte[mid])[:, 1]
                 )
                 global_sender_ab_array = (
                     np.array(

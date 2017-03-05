@@ -163,16 +163,15 @@ class LinagoraWinningPredictor:
         i_Xte = dict()
         sender_idx = X_test["sender"] == sender
         # Thanks God every sender in test appears in train
-        potential_recipients = list(
-            set(list(self.global_ab[sender].elements()))
-        )
+        global_sender_ab_list = list(self.global_ab[sender].elements())
+        potential_recipients = list(set(global_sender_ab_list))
         for mid in X_test[sender_idx].index.tolist():
             i_Xte[mid] = defaultdict(list)
             for recipient in potential_recipients:
                 # Add global frequency feature
                 i_Xte[mid]["global_sent_frequency"].append(
                     self.global_ab[sender][recipient]
-                    / len(potential_recipients)
+                    / len(global_sender_ab_list)
                 )
                 # Add recency features
                 if self.recency is not None:

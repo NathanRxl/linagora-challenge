@@ -47,7 +47,11 @@ print("OK")
 
 print("\tMake predictions on test data ... ", end="", flush=True)
 # Predict the labels of X_test
-y_pred = model.predict(X_test, use_cooccurences=False)
+y_pred = model.predict(
+    X_test,
+    use_cooccurences=False,
+    precomputed="data/hdf_Xte_pipeline.h5"
+)
 print("OK", end="\n\n")
 
 

@@ -1,6 +1,9 @@
 from collections import Counter, defaultdict
 import math
 import random
+import warnings
+import tables
+from time import time
 
 import numpy as np
 import pandas as pd
@@ -226,14 +229,30 @@ class LinagoraWinningPredictor:
 
         return n_co_occurences / n_messages_to_contact_i
 
-    def predict(self, X_test, use_cooccurences=True):
+    def predict(self, X_test, use_cooccurences=True,
+                store=None, precomputed=None):
         predictions = dict()
         # Save all unique sender names in X
         all_test_senders = X_test["sender"].unique().tolist()
+        if store is not None:
+            hdf_file = pd.HDFStore(store)
         print("\tBuild i_Xte and predict for each sender ... ")
         for sender in all_test_senders:
-            i_Xte = self._build_internal_test_set(sender, X_test)
             sender_idx = X_test["sender"] == sender
+            if precomputed is not None:
+                i_Xte = dict()
+                for mid in X_test[sender_idx].index.tolist():
+                    i_Xte[mid] = pd.read_hdf(precomputed, key="{}/{}".format(sender, mid))
+                    assert(self._build_internal_test_set(sender, X_test)[mid].equals(i_Xte[mid]))
+            else:
+                i_Xte = self._build_internal_test_set(sender, X_test)
+            if store is not None:
+                warnings.filterwarnings(
+                    'ignore',
+                    category=tables.NaturalNameWarning
+                )
+                for mid in X_test[sender_idx].index.tolist():
+                    hdf_file.put("{}/{}".format(sender, mid), i_Xte[mid])
             print(
                 "\t\tPredict for {} ... ".format(sender),
                 end="",
@@ -243,12 +262,12 @@ class LinagoraWinningPredictor:
                 mid_pred_probas = (
                     self.logreg[sender].predict_proba(i_Xte[mid])[:, 1]
                 )
-                global_sender_ab_list = (
+                global_sender_ab_array = (
                     np.array(
                         list(set(list(self.global_ab[sender].elements())))
                     )
                 )
-                if not use_cooccurences or len(global_sender_ab_list) <= 10:
+                if not use_cooccurences or len(global_sender_ab_array) <= 10:
                     best_recipients = np.argsort(mid_pred_probas)[::-1][:10]
                 else:
                     best_recipients = np.argsort(mid_pred_probas)[::-1][:2]
@@ -260,19 +279,19 @@ class LinagoraWinningPredictor:
                     for n_pred in range(4):
 
                         co_occurences_best, co_occurences_second_best = (
-                            np.zeros(shape=(len(global_sender_ab_list), )),
-                            np.zeros(shape=(len(global_sender_ab_list), ))
+                            np.zeros(shape=(len(global_sender_ab_array), )),
+                            np.zeros(shape=(len(global_sender_ab_array), ))
                         )
 
-                        for r, recipient in enumerate(global_sender_ab_list):
+                        for r, recipient in enumerate(global_sender_ab_array):
                             co_occurences_best[r] = self.compute_cooccurence(
                                 sender,
-                                global_sender_ab_list[best_recipients[2 * n_pred]],
+                                global_sender_ab_array[best_recipients[2 * n_pred]],
                                 recipient
                             )
                             co_occurences_second_best[r] = self.compute_cooccurence(
                                 sender,
-                                global_sender_ab_list[best_recipients[2 * n_pred + 1]],
+                                global_sender_ab_array[best_recipients[2 * n_pred + 1]],
                                 recipient
                             )
 
@@ -289,12 +308,12 @@ class LinagoraWinningPredictor:
                         best_recipients = np.append(best_recipients, next_best_pred)
                         best_recipients = np.append(best_recipients, next_second_best_pred)
 
-
-
-
-                prediction = global_sender_ab_list[best_recipients]
+                prediction = global_sender_ab_array[best_recipients]
                 predictions[mid] = prediction
             print("OK")
+        if store is not None:
+            # close hdf file
+            hdf_file.close()
         return predictions
 
 

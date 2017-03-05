@@ -37,9 +37,9 @@ for n_fold, (train_fold_index, test_fold_index) in enumerate(cv_split_indexes):
     X_test, y_test = split_xy(test_fold_df)
 
     # Fit model and make predictions
-    model = LinagoraWinningPredictor(recency=[20], non_recipients=0.2)
+    model = LinagoraWinningPredictor(recency=[20], non_recipients=0.3)
     model.fit(X_train, y_train)
-    y_predict = model.predict(X_test)
+    y_predict = model.predict(X_test, use_cooccurences=False)
 
     # Compute true mids_prediction dict from df
     y_test_true_recipients = true_recipients(y_test)

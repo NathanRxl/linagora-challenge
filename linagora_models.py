@@ -226,7 +226,7 @@ class LinagoraWinningPredictor:
 
         return n_co_occurences / n_messages_to_contact_i
 
-    def predict(self, X_test):
+    def predict(self, X_test, use_cooccurences=True):
         predictions = dict()
         # Save all unique sender names in X
         all_test_senders = X_test["sender"].unique().tolist()
@@ -248,47 +248,53 @@ class LinagoraWinningPredictor:
                         list(set(list(self.global_ab[sender].elements())))
                     )
                 )
-                best_recipients = np.argsort(mid_pred_probas)[::-1][:2]
+                if not use_cooccurences or len(global_sender_ab_list) <= 10:
+                    best_recipients = np.argsort(mid_pred_probas)[::-1][:10]
+                else:
+                    best_recipients = np.argsort(mid_pred_probas)[::-1][:2]
 
-                next_best_pred_probas = mid_pred_probas.copy()
-                next_best_pred_probas[best_recipients[1]] = 0.0
-                next_second_best_pred_probas = mid_pred_probas.copy()
-                next_second_best_pred_probas[best_recipients[0]] = 0.0
-                for n_pred in range(4):
+                    next_best_pred_probas = mid_pred_probas.copy()
+                    next_best_pred_probas[best_recipients[1]] = 0.0
+                    next_second_best_pred_probas = mid_pred_probas.copy()
+                    next_second_best_pred_probas[best_recipients[0]] = 0.0
+                    for n_pred in range(4):
 
-                    co_occurences_best, co_occurences_second_best = (
-                        np.zeros(shape=(len(global_sender_ab_list), )),
-                        np.zeros(shape=(len(global_sender_ab_list), ))
-                    )
-
-                    for r, recipient in enumerate(global_sender_ab_list):
-                        co_occurences_best[r] = self.compute_cooccurence(
-                            sender,
-                            global_sender_ab_list[best_recipients[2 * n_pred]],
-                            recipient
-                        )
-                        co_occurences_second_best[r] = self.compute_cooccurence(
-                            sender,
-                            global_sender_ab_list[best_recipients[2 * n_pred + 1]],
-                            recipient
+                        co_occurences_best, co_occurences_second_best = (
+                            np.zeros(shape=(len(global_sender_ab_list), )),
+                            np.zeros(shape=(len(global_sender_ab_list), ))
                         )
 
-                    next_best_pred_probas = next_best_pred_probas * co_occurences_best
-                    next_best_pred = np.argmax(next_best_pred_probas)
+                        for r, recipient in enumerate(global_sender_ab_list):
+                            co_occurences_best[r] = self.compute_cooccurence(
+                                sender,
+                                global_sender_ab_list[best_recipients[2 * n_pred]],
+                                recipient
+                            )
+                            co_occurences_second_best[r] = self.compute_cooccurence(
+                                sender,
+                                global_sender_ab_list[best_recipients[2 * n_pred + 1]],
+                                recipient
+                            )
 
-                    next_second_best_pred_probas = next_second_best_pred_probas * co_occurences_second_best
-                    next_second_best_pred = np.argmax(next_second_best_pred_probas)
+                        next_best_pred_probas = next_best_pred_probas * co_occurences_best
+                        next_best_pred = np.argmax(next_best_pred_probas)
+                        next_second_best_pred_probas[next_best_pred] = 0.0
 
-                    best_recipients = np.append(best_recipients, next_best_pred)
-                    best_recipients = np.append(best_recipients, next_second_best_pred)
+                        next_second_best_pred_probas = next_second_best_pred_probas * co_occurences_second_best
+                        next_second_best_pred = np.argmax(next_second_best_pred_probas)
+                        next_best_pred_probas[next_second_best_pred] = 0.0
 
-                    next_best_pred_probas[next_second_best_pred] = 0.0
-                    next_second_best_pred_probas[next_best_pred] = 0.0
+                        # Warning:
+                        # what if the argmax is random (all score are 0.0) ?
+                        best_recipients = np.append(best_recipients, next_best_pred)
+                        best_recipients = np.append(best_recipients, next_second_best_pred)
+
+
+
 
                 prediction = global_sender_ab_list[best_recipients]
                 predictions[mid] = prediction
             print("OK")
-
         return predictions
 
 

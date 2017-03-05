@@ -2,7 +2,7 @@ import pandas as pd
 from time import time
 
 from general_tools import split_xy, true_recipients, Submissioner
-from linagora_models import FrequencyPredictor
+from linagora_models import FrequencyPredictor, LinagoraWinningPredictor
 from model_evaluation import metrics
 
 initial_time = time()
@@ -23,7 +23,7 @@ X_train, y_train = split_xy(train_df)
 print("OK")
 
 # Initiate the model
-model = FrequencyPredictor(recency=2500)
+model = LinagoraWinningPredictor(recency=[20], non_recipients=0.3)
 
 print("\tFit the model to the train data ... ")
 # Fit the model with the training data
@@ -31,7 +31,7 @@ model.fit(X_train, y_train)
 
 # Compute the training score
 print("\tTraining score: ", end="", flush=True)
-y_predict_train = model.predict(X_train)
+y_predict_train = model.predict(X_train, use_cooccurences=False)
 true_mids_prediction = true_recipients(y_train)
 train_score = metrics.mean_average_precision(
     y_predict_train,
@@ -47,7 +47,7 @@ print("OK")
 
 print("\tMake predictions on test data ... ", end="", flush=True)
 # Predict the labels of X_test
-y_pred = model.predict(X_test)
+y_pred = model.predict(X_test, use_cooccurences=False)
 print("OK", end="\n\n")
 
 

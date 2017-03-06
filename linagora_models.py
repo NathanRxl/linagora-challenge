@@ -16,8 +16,7 @@ import pandas as pd
 from lightgbm import LGBMClassifier
 
 
-def persist_to_file(cache, file_name):
-    atexit.register(lambda: json.dump(cache, open(file_name, 'w')))
+def persist_to_file(cache):
 
     def memoize(f):
         def use_cache(*args):
@@ -309,10 +308,7 @@ class LinagoraWinningPredictor:
                         for r, recipient in enumerate(unique_r_ab):
                             if store_cooccurrences is not None:
                                 co_best[r] = (
-                                    persist_to_file(
-                                        co_occurrences_cache,
-                                        store_cooccurrences
-                                    )
+                                    persist_to_file(co_occurrences_cache)
                                     (self.compute_co_occurrence)(
                                         sender,
                                         unique_r_ab[best_r[2 * n_pred]],
@@ -320,10 +316,7 @@ class LinagoraWinningPredictor:
                                     )
                                 )
                                 co_second_best[r] = (
-                                    persist_to_file(
-                                        co_occurrences_cache,
-                                        store_cooccurrences
-                                    )
+                                    persist_to_file(co_occurrences_cache)
                                     (self.compute_co_occurrence)(
                                         sender,
                                         unique_r_ab[best_r[2 * n_pred + 1]],
@@ -362,6 +355,12 @@ class LinagoraWinningPredictor:
 
                 prediction = unique_r_ab[best_r]
                 predictions[mid] = prediction
+
+            atexit.register(
+                lambda: json.dump(
+                    co_occurrences_cache,
+                    open(store_cooccurrences, 'w'))
+            )
 
             if y_true is not None:
                 y_sender_true_recipients = (

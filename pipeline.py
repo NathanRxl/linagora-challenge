@@ -34,7 +34,8 @@ print("\tTraining score: ", end="", flush=True)
 y_predict_train = model.predict(
     X_train,
     y_true=y_train,
-    use_cooccurences=False
+    use_cooccurrences=True,
+    store_cooccurrences="data/co_occurrences_train_pipeline.json"
 )
 true_mids_prediction = true_recipients(y_train)
 train_score = metrics.mean_average_precision(
@@ -53,7 +54,8 @@ print("\tMake predictions on test data ... ", end="", flush=True)
 # Predict the labels of X_test
 y_pred = model.predict(
     X_test,
-    use_cooccurences=False
+    use_cooccurrences=True,
+    store_cooccurrences="data/co_occurrences_test_pipeline.json"
 )
 print("OK", end="\n\n")
 

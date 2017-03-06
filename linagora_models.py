@@ -14,10 +14,10 @@ import general_tools
 import numpy as np
 import pandas as pd
 from lightgbm import LGBMClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
-
-def persist_to_file(cache):
-
+def use_precomputed_cache(cache):
     def memoize(f):
         def use_cache(*args):
             args_key = str(args[0]) + "/" + str(args[1]) + "/" + str(args[2])
@@ -26,7 +26,6 @@ def persist_to_file(cache):
             else:
                 return cache.update({args_key: f(*args[:3])}) or cache[args_key]
         return use_cache
-
     return memoize
 
 
@@ -173,7 +172,10 @@ class LinagoraWinningPredictor:
         )
         for sender in self.all_train_senders:
             # Define the sender predictive model
-            self.lgbm[sender] = LGBMClassifier()
+            self.lgbm[sender] = Pipeline([
+                ("std", StandardScaler()),
+                ("lgbm", LGBMClassifier())
+            ])
             # Compute sender address book
             self.global_ab[sender] = (
                 compute_ab(sender, X_train, y_train, recency=None)
@@ -244,10 +246,13 @@ class LinagoraWinningPredictor:
 
     def predict(self, X_test, y_true=None, store_scores=True,
                 use_cooccurrences=True, store_i_Xte=None,
-                precomputed_i_Xte=None, store_cooccurrences=None):
-        if store_cooccurrences is not None:
+                precomputed_i_Xte=None, store_cooccurrences=None,
+                precomputed_cooccurrences=None):
+        if use_cooccurrences and precomputed_cooccurrences is not None:
             try:
-                co_occurrences_cache = json.load(open(store_cooccurrences, 'r'))
+                co_occurrences_cache = json.load(
+                    open(precomputed_cooccurrences, 'r')
+                )
             except (IOError, ValueError):
                 co_occurrences_cache = dict()
         predictions = dict()
@@ -255,17 +260,25 @@ class LinagoraWinningPredictor:
         all_test_senders = X_test["sender"].unique().tolist()
         if store_i_Xte is not None:
             hdf_file = pd.HDFStore(store_i_Xte)
-        print("\tBuild i_Xte and predict for each sender ... ")
+        print("\n\tBuild i_Xte and predict for each sender ... ")
         if y_true is not None:
             scores = dict()
+        # Number of the current prediction in print
+        n_prediction = 1
         for sender in all_test_senders:
             t0 = time()
             sender_idx = X_test["sender"] == sender
             if precomputed_i_Xte is not None:
                 i_Xte = dict()
                 for mid in X_test[sender_idx].index.tolist():
-                    i_Xte[mid] = pd.read_hdf(precomputed_i_Xte, key="{}/{}".format(sender, mid))
-                    assert(self._build_internal_test_set(sender, X_test)[mid].equals(i_Xte[mid]))
+                    i_Xte[mid] = pd.read_hdf(
+                        precomputed_i_Xte,
+                        key="{}/{}".format(sender, mid)
+                    )
+                    assert(
+                        self._build_internal_test_set(sender, X_test)[mid]
+                            .equals(i_Xte[mid])
+                    )
             else:
                 i_Xte = self._build_internal_test_set(sender, X_test)
             if store_i_Xte is not None:
@@ -276,7 +289,8 @@ class LinagoraWinningPredictor:
                 for mid in X_test[sender_idx].index.tolist():
                     hdf_file.put("{}/{}".format(sender, mid), i_Xte[mid])
             print(
-                "\t\tPredict for {}".format(sender).ljust(52, " ") + "... ",
+                "\t\t{}/125 Predict for {}".format(n_prediction, sender)
+                .ljust(60, " ") + "... ",
                 end="",
                 flush=True
             )
@@ -306,9 +320,9 @@ class LinagoraWinningPredictor:
                         )
 
                         for r, recipient in enumerate(unique_r_ab):
-                            if store_cooccurrences is not None:
+                            if precomputed_cooccurrences is not None:
                                 co_best[r] = (
-                                    persist_to_file(co_occurrences_cache)
+                                    use_precomputed_cache(co_occurrences_cache)
                                     (self.compute_co_occurrence)(
                                         sender,
                                         unique_r_ab[best_r[2 * n_pred]],
@@ -316,7 +330,7 @@ class LinagoraWinningPredictor:
                                     )
                                 )
                                 co_second_best[r] = (
-                                    persist_to_file(co_occurrences_cache)
+                                    use_precomputed_cache(co_occurrences_cache)
                                     (self.compute_co_occurrence)(
                                         sender,
                                         unique_r_ab[best_r[2 * n_pred + 1]],
@@ -346,7 +360,9 @@ class LinagoraWinningPredictor:
                         n_second_best_pred_probas = (
                             n_second_best_pred_probas * co_second_best
                         )
-                        n_second_best_pred = np.argmax(n_second_best_pred_probas)
+                        n_second_best_pred = np.argmax(
+                            n_second_best_pred_probas
+                        )
                         n_best_pred_probas[n_second_best_pred] = 0.0
 
                         # what if the argmax is random (all score are 0.0) ?
@@ -356,11 +372,12 @@ class LinagoraWinningPredictor:
                 prediction = unique_r_ab[best_r]
                 predictions[mid] = prediction
 
-            atexit.register(
-                lambda: json.dump(
-                    co_occurrences_cache,
-                    open(store_cooccurrences, 'w'))
-            )
+            if use_cooccurrences and store_cooccurrences is not None:
+                atexit.register(
+                    lambda: json.dump(
+                        co_occurrences_cache,
+                        open(store_cooccurrences, 'w'))
+                )
 
             if y_true is not None:
                 y_sender_true_recipients = (
@@ -377,6 +394,8 @@ class LinagoraWinningPredictor:
             else:
                 print("execution time %.5f" % (time() - t0))
 
+            n_prediction += 1
+
         if store_i_Xte is not None:
             # close hdf file
             hdf_file.close()
@@ -389,6 +408,7 @@ class LinagoraWinningPredictor:
                 + ".csv", index=True, index_label="sender"
             )
         return predictions
+
 
 
 class FrequencyPredictor:

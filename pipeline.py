@@ -10,6 +10,10 @@ initial_time = time()
 print("Pipeline script", end="\n\n")
 
 path_to_data = "data/"
+compute_training_score = False
+use_cooccurrences = True
+precomputed_train_cooc = path_to_data + "co_occurrences_train_pipeline.json"
+precomputed_test_cooc = path_to_data + "co_occurrences_test_pipeline.json"
 
 print("\tLoad preprocessed train data ... ", end="", flush=True)
 # Load training data
@@ -23,26 +27,27 @@ X_train, y_train = split_xy(train_df)
 print("OK")
 
 # Initiate the model
-model = LinagoraWinningPredictor(recency=[20], non_recipients=0.3)
+model = LinagoraWinningPredictor(recency=[20], non_recipients=1.0)
 
 print("\tFit the model to the train data ... ")
 # Fit the model with the training data
 model.fit(X_train, y_train)
 
-# Compute the training score
-print("\tTraining score: ", end="", flush=True)
-y_predict_train = model.predict(
-    X_train,
-    y_true=y_train,
-    use_cooccurrences=True,
-    store_cooccurrences="data/co_occurrences_train_pipeline.json"
-)
-true_mids_prediction = true_recipients(y_train)
-train_score = metrics.mean_average_precision(
-    y_predict_train,
-    true_mids_prediction
-)
-print(round(train_score, 5), end="\n\n")
+if compute_training_score:
+    # Compute the training score
+    print("\tTraining score: ", end="", flush=True)
+    y_predict_train = model.predict(
+        X_train,
+        y_true=y_train,
+        use_cooccurrences=use_cooccurrences,
+        precomputed_cooccurrences=precomputed_train_cooc
+    )
+    true_mids_prediction = true_recipients(y_train)
+    train_score = metrics.mean_average_precision(
+        y_predict_train,
+        true_mids_prediction
+    )
+    print(round(train_score, 5), end="\n\n")
 
 print("\tLoad preprocessed test data ... ", end="", flush=True)
 # Load test data
@@ -54,8 +59,8 @@ print("\tMake predictions on test data ... ", end="", flush=True)
 # Predict the labels of X_test
 y_pred = model.predict(
     X_test,
-    use_cooccurrences=True,
-    store_cooccurrences="data/co_occurrences_test_pipeline.json"
+    use_cooccurrences=use_cooccurrences,
+    precomputed_cooccurrences=precomputed_test_cooc
 )
 print("OK", end="\n\n")
 

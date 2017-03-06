@@ -5,6 +5,8 @@ import warnings
 import tables
 from time import time
 from datetime import datetime
+import json
+import atexit
 
 from model_evaluation import metrics
 import general_tools
@@ -14,13 +16,19 @@ import pandas as pd
 from lightgbm import LGBMClassifier
 
 
-def memoize(f):
-    cache = dict()
-    return (
-        lambda *args:
-        cache[args] if args in cache
-        else cache.update({args: f(*args)}) or cache[args]
-    )
+def persist_to_file(cache, file_name):
+    atexit.register(lambda: json.dump(cache, open(file_name, 'w')))
+
+    def memoize(f):
+        def use_cache(*args):
+            args_key = str(args[0]) + "/" + str(args[1]) + "/" + str(args[2])
+            if args_key in cache:
+                return cache[args_key]
+            else:
+                return cache.update({args_key: f(*args[:3])}) or cache[args_key]
+        return use_cache
+
+    return memoize
 
 
 def compute_ab(sender, X_train, y_train, recency=None):
@@ -220,8 +228,7 @@ class LinagoraWinningPredictor:
         # Return the internal test set
         return i_Xte
 
-    @memoize
-    def compute_cooccurence(self, sender, contact_i, contact_j):
+    def compute_co_occurrence(self, sender, contact_i, contact_j):
 
         if contact_i == contact_j:
             return 0.0
@@ -237,8 +244,13 @@ class LinagoraWinningPredictor:
         return n_co_occurences / n_messages_to_contact_i
 
     def predict(self, X_test, y_true=None, store_scores=True,
-                use_cooccurences=True, store_i_Xte=None,
-                precomputed_i_Xte=None):
+                use_cooccurrences=True, store_i_Xte=None,
+                precomputed_i_Xte=None, store_cooccurrences=None):
+        if store_cooccurrences is not None:
+            try:
+                co_occurrences_cache = json.load(open(store_cooccurrences, 'r'))
+            except (IOError, ValueError):
+                co_occurrences_cache = dict()
         predictions = dict()
         # Save all unique sender names in X
         all_test_senders = X_test["sender"].unique().tolist()
@@ -273,53 +285,82 @@ class LinagoraWinningPredictor:
                 mid_pred_probas = (
                     self.lgbm[sender].predict_proba(i_Xte[mid])[:, 1]
                 )
-                global_sender_ab_array = (
+                unique_r_ab = (
                     np.array(
                         list(set(list(self.global_ab[sender].elements())))
                     )
                 )
-                if not use_cooccurences or len(global_sender_ab_array) <= 10:
-                    best_recipients = np.argsort(mid_pred_probas)[::-1][:10]
+                if not use_cooccurrences or len(unique_r_ab) <= 10:
+                    best_r = np.argsort(mid_pred_probas)[::-1][:10]
                 else:
-                    best_recipients = np.argsort(mid_pred_probas)[::-1][:2]
+                    best_r = np.argsort(mid_pred_probas)[::-1][:2]
 
-                    next_best_pred_probas = mid_pred_probas.copy()
-                    next_best_pred_probas[best_recipients[1]] = 0.0
-                    next_second_best_pred_probas = mid_pred_probas.copy()
-                    next_second_best_pred_probas[best_recipients[0]] = 0.0
+                    n_best_pred_probas = mid_pred_probas.copy()
+                    n_best_pred_probas[best_r[1]] = 0.0
+                    n_second_best_pred_probas = mid_pred_probas.copy()
+                    n_second_best_pred_probas[best_r[0]] = 0.0
                     for n_pred in range(4):
 
-                        co_occurences_best, co_occurences_second_best = (
-                            np.zeros(shape=(len(global_sender_ab_array), )),
-                            np.zeros(shape=(len(global_sender_ab_array), ))
+                        co_best, co_second_best = (
+                            np.zeros(shape=(len(unique_r_ab), )),
+                            np.zeros(shape=(len(unique_r_ab), ))
                         )
 
-                        for r, recipient in enumerate(global_sender_ab_array):
-                            co_occurences_best[r] = self.compute_cooccurence(
-                                sender,
-                                global_sender_ab_array[best_recipients[2 * n_pred]],
-                                recipient
-                            )
-                            co_occurences_second_best[r] = self.compute_cooccurence(
-                                sender,
-                                global_sender_ab_array[best_recipients[2 * n_pred + 1]],
-                                recipient
-                            )
+                        for r, recipient in enumerate(unique_r_ab):
+                            if store_cooccurrences is not None:
+                                co_best[r] = (
+                                    persist_to_file(
+                                        co_occurrences_cache,
+                                        store_cooccurrences
+                                    )
+                                    (self.compute_co_occurrence)(
+                                        sender,
+                                        unique_r_ab[best_r[2 * n_pred]],
+                                        recipient
+                                    )
+                                )
+                                co_second_best[r] = (
+                                    persist_to_file(
+                                        co_occurrences_cache,
+                                        store_cooccurrences
+                                    )
+                                    (self.compute_co_occurrence)(
+                                        sender,
+                                        unique_r_ab[best_r[2 * n_pred + 1]],
+                                        recipient
+                                    )
+                                )
+                            else:
+                                co_best[r] = (
+                                    self.compute_co_occurrence(
+                                        sender,
+                                        unique_r_ab[best_r[2 * n_pred]],
+                                        recipient
+                                    )
+                                )
+                                co_second_best[r] = (
+                                    self.compute_co_occurrence(
+                                        sender,
+                                        unique_r_ab[best_r[2 * n_pred + 1]],
+                                        recipient
+                                    )
+                                )
 
-                        next_best_pred_probas = next_best_pred_probas * co_occurences_best
-                        next_best_pred = np.argmax(next_best_pred_probas)
-                        next_second_best_pred_probas[next_best_pred] = 0.0
+                        n_best_pred_probas = n_best_pred_probas * co_best
+                        n_best_pred = np.argmax(n_best_pred_probas)
+                        n_second_best_pred_probas[n_best_pred] = 0.0
 
-                        next_second_best_pred_probas = next_second_best_pred_probas * co_occurences_second_best
-                        next_second_best_pred = np.argmax(next_second_best_pred_probas)
-                        next_best_pred_probas[next_second_best_pred] = 0.0
+                        n_second_best_pred_probas = (
+                            n_second_best_pred_probas * co_second_best
+                        )
+                        n_second_best_pred = np.argmax(n_second_best_pred_probas)
+                        n_best_pred_probas[n_second_best_pred] = 0.0
 
-                        # Warning:
                         # what if the argmax is random (all score are 0.0) ?
-                        best_recipients = np.append(best_recipients, next_best_pred)
-                        best_recipients = np.append(best_recipients, next_second_best_pred)
+                        best_r = np.append(best_r, n_best_pred)
+                        best_r = np.append(best_r, n_second_best_pred)
 
-                prediction = global_sender_ab_array[best_recipients]
+                prediction = unique_r_ab[best_r]
                 predictions[mid] = prediction
 
             if y_true is not None:

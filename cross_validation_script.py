@@ -39,9 +39,12 @@ for n_fold, (train_fold_index, test_fold_index) in enumerate(cv_split_indexes):
     # Fit model and make predictions
     model = LinagoraWinningPredictor(recency=[20], non_recipients=0.3)
     model.fit(X_train, y_train)
+
+    store_cooccurrences = "data/co_occurrences_cv_{}-3.json".format(n_fold + 1)
     y_predict = model.predict(
         X_test,
-        use_cooccurences=False,
+        use_cooccurrences=True,
+        store_cooccurrences=store_cooccurrences,
         y_true=y_test,
         store_scores=False
     )

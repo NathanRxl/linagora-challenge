@@ -10,12 +10,14 @@ import atexit
 
 from model_evaluation import metrics
 import general_tools
+import text_tools
 
 import numpy as np
 import pandas as pd
 from lightgbm import LGBMClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+
 
 def use_precomputed_cache(cache):
     def memoize(f):
@@ -54,6 +56,31 @@ def compute_ab(sender, X_train, y_train, recency=None):
     return Counter(sender_recipients)
 
 
+def compute_first_names_ab(sender_ab):
+
+    SURNAMES = {
+        "robert": ["bob"],
+    }
+
+    first_names_ab = defaultdict(list)
+    unique_sender_contacts = list(set(list(sender_ab.elements())))
+
+    for contact in unique_sender_contacts:
+        first_name = contact[:contact.find(".")]
+        if '@' in first_name:
+            # This surprisingly potentially reduce the cv score a bit
+            # compares to
+            # continue
+            first_name = contact[:contact.find("@")]
+        if len(first_name) > 2:
+            first_names_ab[first_name].append(contact)
+            if first_name in SURNAMES.keys():
+                for surname in SURNAMES[first_name]:
+                    first_names_ab[surname].append(contact)
+
+    return first_names_ab
+
+
 class LinagoraWinningPredictor:
     def __init__(self, recency=None, non_recipients=0.2):
         self.recency = recency
@@ -62,6 +89,7 @@ class LinagoraWinningPredictor:
         self.lgbm = dict()
         self.global_ab = dict()
         self.recent_ab = dict()
+        self.first_names_ab = dict()
         self.all_users = list()
         self.non_recipients = non_recipients
         self.X_train = None
@@ -187,6 +215,11 @@ class LinagoraWinningPredictor:
                     self.recent_ab[sender][recency] = (
                         compute_ab(sender, X_train, y_train, recency=recency)
                     )
+            # Compute first names address book
+            self.first_names_ab[sender] = (
+                compute_first_names_ab(self.global_ab[sender])
+            )
+
             # Build internal train sets
             sender_internal_Xtr, sender_internal_ytr = (
                 self._build_internal_train_sets(sender, X_train, y_train)
@@ -303,21 +336,47 @@ class LinagoraWinningPredictor:
                         list(set(list(self.global_ab[sender].elements())))
                     )
                 )
-                if not use_cooccurrences or len(unique_r_ab) <= 10:
-                    best_r = np.argsort(mid_pred_probas)[::-1][:10]
-                else:
-                    best_r = np.argsort(mid_pred_probas)[::-1][:2]
+                # Predict first the first names found in the body
+                truncated_body = (
+                    text_tools.truncate_body(X_test.loc[mid]["body"])
+                )
+                best_r = np.array(list(), int)
 
-                    n_best_pred_probas = mid_pred_probas.copy()
-                    n_best_pred_probas[best_r[1]] = 0.0
-                    n_second_best_pred_probas = mid_pred_probas.copy()
-                    n_second_best_pred_probas[best_r[0]] = 0.0
-                    for n_pred in range(4):
-
-                        co_best, co_second_best = (
-                            np.zeros(shape=(len(unique_r_ab), )),
-                            np.zeros(shape=(len(unique_r_ab), ))
+                for first_name in self.first_names_ab[sender].keys():
+                    if first_name in truncated_body:
+                        possible_r = self.first_names_ab[sender][first_name]
+                        recipient_idxs = list()
+                        recipient_pred_probas = list()
+                        for recipient in possible_r:
+                            recipient_idxs.append(
+                                np.where(recipient == unique_r_ab)[0][0]
+                            )
+                            recipient_pred_probas.append(
+                                mid_pred_probas[recipient_idxs[-1]]
+                            )
+                        most_probable_named_r = (
+                            np.argsort(recipient_pred_probas)[::-1][:2]
                         )
+                        for most_probable_r in most_probable_named_r:
+                            recipient_idx = recipient_idxs[most_probable_r]
+                            best_r = np.append(best_r, recipient_idx)
+                            mid_pred_probas[recipient_idx] = 0.0
+
+                if not use_cooccurrences or len(unique_r_ab) <= 10:
+                    still_to_predict = 10 - len(best_r)
+                    for pred in np.argsort(mid_pred_probas)[::-1][:still_to_predict]:
+                        best_r = np.append(best_r, pred)
+                else:
+                    pred_to_add = max(2, 5 - len(best_r))
+                    for pred in np.argsort(mid_pred_probas)[::-1][:pred_to_add]:
+                        best_r = np.append(best_r, pred)
+                        mid_pred_probas[pred] = 0.0
+
+                    first_best_r = best_r.copy()
+                    for first_pred in first_best_r[:(10 - len(first_best_r))]:
+
+                        next_best_pred_probas = mid_pred_probas.copy()
+                        co_best = np.zeros(shape=(len(unique_r_ab), ))
 
                         for r, recipient in enumerate(unique_r_ab):
                             if precomputed_cooccurrences is not None:
@@ -325,15 +384,7 @@ class LinagoraWinningPredictor:
                                     use_precomputed_cache(co_occurrences_cache)
                                     (self.compute_co_occurrence)(
                                         sender,
-                                        unique_r_ab[best_r[2 * n_pred]],
-                                        recipient
-                                    )
-                                )
-                                co_second_best[r] = (
-                                    use_precomputed_cache(co_occurrences_cache)
-                                    (self.compute_co_occurrence)(
-                                        sender,
-                                        unique_r_ab[best_r[2 * n_pred + 1]],
+                                        unique_r_ab[first_pred],
                                         recipient
                                     )
                                 )
@@ -341,33 +392,17 @@ class LinagoraWinningPredictor:
                                 co_best[r] = (
                                     self.compute_co_occurrence(
                                         sender,
-                                        unique_r_ab[best_r[2 * n_pred]],
-                                        recipient
-                                    )
-                                )
-                                co_second_best[r] = (
-                                    self.compute_co_occurrence(
-                                        sender,
-                                        unique_r_ab[best_r[2 * n_pred + 1]],
+                                        unique_r_ab[first_pred],
                                         recipient
                                     )
                                 )
 
-                        n_best_pred_probas = n_best_pred_probas * co_best
-                        n_best_pred = np.argmax(n_best_pred_probas)
-                        n_second_best_pred_probas[n_best_pred] = 0.0
-
-                        n_second_best_pred_probas = (
-                            n_second_best_pred_probas * co_second_best
-                        )
-                        n_second_best_pred = np.argmax(
-                            n_second_best_pred_probas
-                        )
-                        n_best_pred_probas[n_second_best_pred] = 0.0
+                        next_best_pred_probas = next_best_pred_probas * co_best
+                        next_best_pred = np.argmax(next_best_pred_probas)
 
                         # what if the argmax is random (all score are 0.0) ?
-                        best_r = np.append(best_r, n_best_pred)
-                        best_r = np.append(best_r, n_second_best_pred)
+                        best_r = np.append(best_r, next_best_pred)
+                        mid_pred_probas[next_best_pred] = 0.0
 
                 prediction = unique_r_ab[best_r]
                 predictions[mid] = prediction
@@ -408,7 +443,6 @@ class LinagoraWinningPredictor:
                 + ".csv", index=True, index_label="sender"
             )
         return predictions
-
 
 
 class FrequencyPredictor:

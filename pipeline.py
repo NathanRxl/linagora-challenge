@@ -10,8 +10,8 @@ initial_time = time()
 print("Pipeline script", end="\n\n")
 
 path_to_data = "data/"
-compute_training_score = False
-use_cooccurrences = True
+compute_training_score = True
+use_cooccurrences = False
 precomputed_train_cooc = path_to_data + "co_occurrences_train_pipeline.json"
 precomputed_test_cooc = path_to_data + "co_occurrences_test_pipeline.json"
 

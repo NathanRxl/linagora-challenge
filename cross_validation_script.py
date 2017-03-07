@@ -45,7 +45,7 @@ for n_fold, (train_fold_index, test_fold_index) in enumerate(cv_split_indexes):
     )
     y_predict = model.predict(
         X_test,
-        use_cooccurrences=True,
+        use_cooccurrences=False,
         precomputed_cooccurrences=precomputed_cooccurrences,
         y_true=None,
         store_scores=False

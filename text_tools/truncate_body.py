@@ -3,7 +3,7 @@ import string
 from nltk.tag import pos_tag
 
 
-def truncate_body(body):
+def truncate_body(body, char_limit=20):
     if body.find("Original Message") != -1:
         body = body[:body.find("Original Message")]
     if body.find("Forwarded by") != -1:
@@ -15,7 +15,7 @@ def truncate_body(body):
     body = re.sub("\.|\,|\-|\;|\(|\)|\:|\!|\<|\>|\+|\"|\?|\$|\_|\*",
                   " ", body)
     body = re.sub("\d+", " ", body)
-    body = body[:20]
+    body = body[:char_limit]
     if body.find(" ") != -1:
         body = body[::-1].split(" ", 1)[1][::-1]
     return body.lower()

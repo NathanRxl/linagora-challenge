@@ -60,6 +60,26 @@ def compute_first_names_ab(sender_ab):
 
     SURNAMES = {
         "robert": ["bob"],
+        "susan": ["sue"],
+        "james": ["jim", "jimbo"],
+        "jturnure": ["jim"],
+        "david": ["dave"],
+        "patrick": ["pat"],
+        "jdasovic": ["jeff"],
+        "jrb": ["jim"],
+        "styler": ["sally"],
+        "jw1000mac": ["jim"],
+        "nielsenj": ["jim"],
+        "jborowic": ["jim"],
+        "steven": ["steve"],
+    }
+
+    FIRST_NAME_NOT_IN_ADDRESS = {
+        "c..williams@enron.com": "bob",  # 32056 + another
+        "a..hueter@enron.com": "barbara",  # 49594
+        "j..noske@enron.com": "linda",  # 49604
+        "l..lawrence@enron.com": "linda",  # 49611
+        "w..cantrell@enron.com": "becky",  # 49575
     }
 
     first_names_ab = defaultdict(list)
@@ -72,6 +92,8 @@ def compute_first_names_ab(sender_ab):
             # compares to
             # continue
             first_name = contact[:contact.find("@")]
+        if contact in FIRST_NAME_NOT_IN_ADDRESS:
+            first_name = FIRST_NAME_NOT_IN_ADDRESS[contact]
         if len(first_name) > 2:
             first_names_ab[first_name].append(contact)
             if first_name in SURNAMES.keys():
@@ -106,9 +128,12 @@ class LinagoraWinningPredictor:
             potential_non_recipients = list(set(global_sender_ab_list))
             # Fill lines with target 1
             recipients = y_train.loc[mid]["recipients"].split(" ")
+            # mid_hour = X_train.loc[mid]["date"].hour
             for recipient in recipients:
                 i_ytr.append(1)
                 potential_non_recipients.remove(recipient)
+                # Add working hours feature
+                # i_Xtr["working_hours"].append(int(6 <= mid_hour <= 21))
                 # Add global frequency feature
                 i_Xtr["global_sent_frequency"].append(
                     self.global_ab[sender][recipient]
@@ -144,6 +169,8 @@ class LinagoraWinningPredictor:
 
                 for non_recipient in non_recipients_sample:
                     i_ytr.append(0)
+                    # Add working hours feature
+                    # i_Xtr["working_hours"].append(int(6 <= mid_hour <= 21))
                     # Add global frequency feature
                     i_Xtr["global_sent_frequency"].append(
                         self.global_ab[sender][non_recipient]
@@ -171,6 +198,8 @@ class LinagoraWinningPredictor:
                 # those 3 users. Because these users have very few emails in
                 # the train, with very few recipients, always the same ones
                 i_ytr.append(0)
+                # Add working hours feature
+                # i_Xtr["working_hours"].append(int(6 <= mid_hour <= 21))
                 # Add global frequency feature
                 i_Xtr["global_sent_frequency"].append(0.0)
                 # Add recency features
@@ -237,7 +266,10 @@ class LinagoraWinningPredictor:
         potential_recipients = list(set(global_sender_ab_list))
         for mid in X_test[sender_idx].index.tolist():
             i_Xte[mid] = defaultdict(list)
+            # mid_hour = X_test.loc[mid]["date"].hour
             for recipient in potential_recipients:
+                # Add working hours feature
+                # i_Xte[mid]["working_hours"].append(int(6 <= mid_hour <= 21))
                 # Add global frequency feature
                 i_Xte[mid]["global_sent_frequency"].append(
                     self.global_ab[sender][recipient]
@@ -341,9 +373,24 @@ class LinagoraWinningPredictor:
                     text_tools.truncate_body(X_test.loc[mid]["body"])
                 )
                 best_r = np.array(list(), int)
+                prediction_outside_ab = []
+
+                if "task assignment" in X_test.loc[mid]["body"][:50].lower():
+                    try:
+                        no_address_idx = (
+                            np.where("no.address@enron.com" == unique_r_ab)[0][0]
+                        )
+                        best_r = np.append(best_r, no_address_idx)
+                        mid_pred_probas[no_address_idx] = 0.0
+                    except IndexError:
+                        prediction_outside_ab.append("no.address@enron.com")
 
                 for first_name in self.first_names_ab[sender].keys():
                     if first_name in truncated_body:
+                        if first_name == "jim" and len(truncated_body[truncated_body.find("jim"):]) < 5:
+                            # james.d.steffes tends to write very short mails
+                            # and sign Jim. False positives.
+                            continue
                         possible_r = self.first_names_ab[sender][first_name]
                         recipient_idxs = list()
                         recipient_pred_probas = list()
@@ -354,20 +401,31 @@ class LinagoraWinningPredictor:
                             recipient_pred_probas.append(
                                 mid_pred_probas[recipient_idxs[-1]]
                             )
+                        max_probas_named_r = np.max(recipient_pred_probas)
+                        mask = (
+                            np.array(
+                                recipient_pred_probas > max_probas_named_r - 0.01,
+                                int
+                            )
+                        )
+                        masked_recipient_pred_probas = (
+                            recipient_pred_probas * mask
+                        )
                         most_probable_named_r = (
-                            np.argsort(recipient_pred_probas)[::-1][:2]
+                            np.argsort(masked_recipient_pred_probas)[::-1]
                         )
                         for most_probable_r in most_probable_named_r:
-                            recipient_idx = recipient_idxs[most_probable_r]
-                            best_r = np.append(best_r, recipient_idx)
-                            mid_pred_probas[recipient_idx] = 0.0
+                            if masked_recipient_pred_probas[most_probable_r] != 0:
+                                recipient_idx = recipient_idxs[most_probable_r]
+                                best_r = np.append(best_r, recipient_idx)
+                                mid_pred_probas[recipient_idx] = 0.0
 
                 if not use_cooccurrences or len(unique_r_ab) <= 10:
                     still_to_predict = 10 - len(best_r)
                     for pred in np.argsort(mid_pred_probas)[::-1][:still_to_predict]:
                         best_r = np.append(best_r, pred)
                 else:
-                    pred_to_add = max(2, 5 - len(best_r))
+                    pred_to_add = max(2, 7 - len(best_r))
                     for pred in np.argsort(mid_pred_probas)[::-1][:pred_to_add]:
                         best_r = np.append(best_r, pred)
                         mid_pred_probas[pred] = 0.0
@@ -404,7 +462,9 @@ class LinagoraWinningPredictor:
                         best_r = np.append(best_r, next_best_pred)
                         mid_pred_probas[next_best_pred] = 0.0
 
-                prediction = unique_r_ab[best_r]
+                prediction = (
+                    (prediction_outside_ab + list(unique_r_ab[best_r]))[:10]
+                )
                 predictions[mid] = prediction
 
             if use_cooccurrences and store_cooccurrences is not None:

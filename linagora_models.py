@@ -802,6 +802,7 @@ class LinagoraKnnPredictor:
         self.train_senders_vectorizers = dict()
         self.train_senders_recipients = dict()
         self.lgbm = dict()
+        self.first_names_ab = dict()
 
 
     def _build_internal_train_set(self, sender, X_train, y_train):
@@ -829,7 +830,7 @@ class LinagoraKnnPredictor:
             keep_messages = np.array(sender_messages)[keep_fold_indexes]
             leave_messages = np.array(sender_messages)[leave_fold_indexes]
             tfidf_vectorizer = TfidfVectorizer(
-                ngram_range=(1,1),
+                ngram_range=(1,2),
             )
             # Fit the tfidf
             keep_tfidf = tfidf_vectorizer.fit_transform(keep_messages).todense()
@@ -921,7 +922,7 @@ class LinagoraKnnPredictor:
                 train_message_idx = order[i, j]
                 message_recipients = train_recipients[train_message_idx]
                 for recipient in message_recipients:
-                    recipients_score[recipient] += distances[i, train_message_idx]
+                    recipients_score[recipient] += distances[i, train_message_idx] ** 2
             # Fill the features dict
             for recipient, score in recipients_score.items():
                 i_Xte[(mid_to_predict,recipient)] = score
@@ -942,7 +943,6 @@ class LinagoraKnnPredictor:
 
         for sender_nb, sender in enumerate(self.all_train_senders):
             self.train_senders_recipients[sender] = []
-
             sender_recipients = []
             sender_idx = X_train["sender"] == sender
             for recipients in y_train[sender_idx]["recipients"].tolist():
@@ -959,12 +959,28 @@ class LinagoraKnnPredictor:
             # Save recipients counts
             self.address_books[sender] = Counter(sender_recipients)
 
+            # Compute the names address book
+            self.first_names_ab[sender] = (
+                compute_first_names_ab(self.address_books[sender])
+            )
+
             # Save all unique recipient names
             for recipient in sender_recipients:
                 self.all_users.add(recipient)
 
+        # Printing parameters
+        n_senders = len(self.all_train_senders)
+        percentage_trained = 0
+        percentage_step = 0.05
+
         # Compute the train features and labels
         for sender in self.all_train_senders:
+            # Print the advancement of the training
+            if sender_nb > (percentage_trained + percentage_step) * n_senders:
+                percentage_trained += percentage_step
+                print("\t\t{percentage}% of the senders have been trained"
+                      .format(percentage=int(round(100 * percentage_trained,0))))
+
             features_df, labels_df = self._build_internal_train_set(
                 sender=sender,
                 X_train=X_train,
@@ -998,7 +1014,7 @@ class LinagoraKnnPredictor:
             sender_messages = X_train_sender["body"].tolist()
 
             tfidf_vectorizer = TfidfVectorizer(
-                ngram_range=(1,1),
+                ngram_range=(1,2),
             )
             tfidf_matrix = (tfidf_vectorizer.fit_transform(sender_messages)
                                             .todense())
@@ -1017,7 +1033,7 @@ class LinagoraKnnPredictor:
         all_test_senders = X_test["sender"].unique().tolist()
 
         # Compute the test features and make predictions
-        mids_prediction = {}
+        predictions = {}
         for sender in all_test_senders:
             sender_idx = X_test["sender"] == sender
             test_features_df = self._build_internal_test_set(sender, X_test)
@@ -1030,18 +1046,68 @@ class LinagoraKnnPredictor:
                 if self.lgbm[sender] == 1:
                     # Handle the case when there were no 0 in i_ytr
                     # In that case, the algorithm could not learn
-                    mids_prediction[mid] = recipients_list[:10]
+                    predictions[mid] = recipients_list[:10]
                 else:
-                    mid_pred_probas = self.lgbm[sender].predict_proba(i_Xte)[:, 1]
+                    # mid_pred_probas = self.lgbm[sender].predict_proba(i_Xte)[:, 1]
+                    mid_pred_probas = i_Xte.flatten()
                     # Sort the predictions
-                    best_recipients_indexes = np.argsort(mid_pred_probas)[::-1][:10]
+                    # best_recipients_indexes = np.argsort(mid_pred_probas)[::-1][:10]
                     # best_recipients_indexes = np.argsort(i_Xte.flatten())[::-1][:10]
-                    # Put the 10 best predictions in the dict
-                    mids_prediction[mid] = [
-                        recipients_list[recipient_index]
-                        for recipient_index in best_recipients_indexes
-                    ]
-                # i_Xte[np.argsort(mid_pred_probas)[::-1][:10]]
-                # i_Xte[np.argsort(i_Xte.flatten())[::-1][:10]]
+                    # predictions[mid] = [
+                    #     recipients_list[recipient_index]
+                    #     for recipient_index in best_recipients_indexes
+                    # ]
 
-        return mids_prediction
+                    # Put the 10 best predictions in the dict
+
+                    # Use the names to compute the best recipients
+                    unique_r_ab = np.array(recipients_list)
+                    # Predict first the first names found in the body
+                    truncated_body = (
+                        text_tools.truncate_body(X_test.loc[mid]["body"])
+                    )
+                    best_r = np.array(list(), int)
+                    prediction_outside_ab = []
+
+                    for first_name in self.first_names_ab[sender].keys():
+                        if first_name in truncated_body:
+                            if len(truncated_body[truncated_body.find(first_name):]) < 5:
+                                # james.d.steffes and rick.buy@enron.com
+                                # tend to write very short mails
+                                # and sign Jim or Rick. This is an attempt to
+                                # reduce these kind of false positives.
+                                # print(first_name, truncated_body, mid, sender)
+                                continue
+
+                            if first_name == " don " and " don t" in truncated_body:
+                                # Obvious false positive
+                                continue
+
+                            possible_r = self.first_names_ab[sender][first_name]
+                            recipient_idxs = list()
+                            recipient_pred_probas = list()
+                            for recipient in possible_r:
+                                recipient_idxs.append(
+                                    np.where(recipient == unique_r_ab)[0][0]
+                                )
+                                recipient_pred_probas.append(
+                                    mid_pred_probas[recipient_idxs[-1]]
+                                )
+                            most_probable_named_r = (
+                                np.argmax(recipient_pred_probas)
+                            )
+
+                            recipient_idx = recipient_idxs[most_probable_named_r]
+                            best_r = np.append(best_r, recipient_idx)
+                            mid_pred_probas[recipient_idx] = 0.0
+
+                    still_to_predict = 10 - len(best_r)
+                    for pred in np.argsort(mid_pred_probas)[::-1][:still_to_predict]:
+                        best_r = np.append(best_r, pred)
+
+                    prediction = (
+                        (prediction_outside_ab + list(unique_r_ab[best_r]))[:10]
+                    )
+                    predictions[mid] = prediction
+
+        return predictions

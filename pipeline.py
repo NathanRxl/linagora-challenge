@@ -30,8 +30,8 @@ X_train, y_train = split_xy(train_df)
 print("OK")
 
 # Initiate the model
-model = LinagoraWinningPredictor()
-# model = LinagoraKnnPredictor()
+# model = LinagoraWinningPredictor()
+model = LinagoraKnnPredictor()
 
 print("\tFit the model to the train data ... ")
 # Fit the model with the training data
@@ -60,13 +60,13 @@ print("OK")
 
 print("\tMake predictions on test data ... ", end="", flush=True)
 # Predict the labels of X_test
-y_pred = model.predict(
-    X_test,
-    use_cooccurrences=False,
-    # precomputed_cooccurrences=precomputed_cooccurrences,
-    y_true=None,
-    store_scores=False
-)
+# y_pred = model.predict(
+#     X_test,
+#     use_cooccurrences=False,
+#     y_true=None,
+#     store_scores=False
+# )
+y_pred = model.predict(X_test)
 print("OK", end="\n\n")
 
 
@@ -80,7 +80,7 @@ submission_folder_path = "submissions/"
 
 Submissioner.create_submission(
     y_pred,
-    output_filename="predictions_knn_features.txt"
+    output_filename="predictions_knn_names.txt"
 )
 print("OK")
 

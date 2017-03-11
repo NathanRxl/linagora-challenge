@@ -5,7 +5,7 @@ import warnings
 import tables
 import operator
 from time import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import atexit
 
@@ -36,22 +36,28 @@ def use_precomputed_cache(cache):
     return memoize
 
 
-def compute_ab(sender, X_train, y_train, recency=None):
+def compute_ab(sender, X_train, y_train, time_recency=None,
+               message_recency=None):
     sender_recipients = list()
-
     sender_idx = X_train["sender"] == sender
 
-    if recency is None:
-        sender_recipients_list = y_train.loc[sender_idx]["recipients"].tolist()
-    else:
+    if time_recency is not None:
+        first_recent_date = X_train[sender_idx]['date'].max() - timedelta(days=time_recency)
+        recent_sender_idx = (X_train[sender_idx]['date'] >= first_recent_date).index
+        sender_recipients_list = (
+            y_train.loc[recent_sender_idx]["recipients"].tolist()
+        )
+    elif message_recency is not None:
         recent_sender_idx = (
             X_train[sender_idx]
             .sort_values(by=["date"], ascending=[1])
-            .index.tolist()[-recency:]
+            .index.tolist()[-message_recency:]
         )
         sender_recipients_list = (
             y_train.loc[recent_sender_idx]["recipients"].tolist()
         )
+    else:
+        sender_recipients_list = y_train.loc[sender_idx]["recipients"].tolist()
 
     for recipients in sender_recipients_list:
         sender_recipients.extend(
@@ -85,6 +91,11 @@ def compute_first_names_ab(sender_ab):
         "j..noske@enron.com": "linda",  # 49604
         "l..lawrence@enron.com": "linda",  # 49611
         "w..cantrell@enron.com": "becky",  # 49575
+        # "taylor@enron.com": "mark",
+        "jdasovic@enron.com": "jeff",
+        "aminard@azdailysun.com": "anne",
+        "ameytina@bear.com": "anna", # 30440
+        "mklemont@bear.com": "mary kay", # 30688
     }
 
     first_names_ab = defaultdict(list)
@@ -109,16 +120,20 @@ def compute_first_names_ab(sender_ab):
 
 
 class LinagoraWinningPredictor:
-    def __init__(self, recency=None, non_recipients=0.2):
-        self.recency = recency
+    def __init__(self, time_recency=None, message_recency=None):
+        self.time_recency = (
+            time_recency if time_recency is not None else list()
+        )
+        self.msg_recency = (
+            message_recency if message_recency is not None else list()
+        )
         self.all_train_senders = list()
         # Dict of lgbm (one per user)
         self.lgbm = dict()
         self.global_ab = dict()
-        self.recent_ab = dict()
+        self.time_recent_ab = defaultdict(dict)
+        self.msg_recent_ab = defaultdict(dict)
         self.first_names_ab = dict()
-        self.all_users = list()
-        self.non_recipients = non_recipients
         self.X_train = None
         self.y_train = None
 
@@ -127,26 +142,61 @@ class LinagoraWinningPredictor:
         self.train_senders_vectorizers = dict()
 
     def _build_internal_train_sets(self, sender, X_train, y_train):
-        i_Xtr = {}
-        i_ytr = {}
+        i_Xtr = defaultdict(dict)
+        # i_Xtr = defaultdict(lambda : defaultdict(float))
+        i_ytr = dict()
         sender_idx = X_train["sender"] == sender
         global_sender_ab_list = list(self.global_ab[sender].elements())
+
+        time_recent_contacts = dict()
+        msg_recent_contacts = dict()
+
+        for time_recency in self.time_recency:
+            time_recent_contacts[time_recency] = (
+                list(self.time_recent_ab[time_recency][sender].elements())
+            )
+        for msg_recency in self.msg_recency:
+            msg_recent_contacts[msg_recency] = (
+                list(self.msg_recent_ab[msg_recency][sender].elements())
+            )
+
         all_recipients = self.global_ab[sender].keys()
+
         for mid in X_train[sender_idx].index.tolist():
             # Fill lines with target 1
             true_recipients = y_train.loc[mid]["recipients"].split(" ")
             for recipient in all_recipients:
                 i_ytr[(mid, recipient)] = int(recipient in true_recipients)
-                i_Xtr[(mid, recipient)] = (
+                i_Xtr["frequency_scores"][(mid, recipient)] = (
                     self.global_ab[sender][recipient]
                     / len(global_sender_ab_list)
                 )
 
+                for time_recency in self.time_recency:
+                    time_recency_feature_name = (
+                        "time_recency_{}_frequency".format(time_recency)
+                    )
+                    i_Xtr[time_recency_feature_name][(mid, recipient)] = (
+                        self.time_recent_ab[time_recency][sender][recipient]
+                        / len(time_recent_contacts)
+                    )
+
+                for msg_recency in self.msg_recency:
+                    msg_recency_feature_name = (
+                        "msg_recency_{}_frequency".format(msg_recency)
+                    )
+                    i_Xtr[msg_recency_feature_name][(mid, recipient)] = (
+                        self.msg_recent_ab[msg_recency][sender][recipient]
+                        / len(msg_recent_contacts)
+                    )
+
+
         # Compute dataframes from the features dict and the labels dict
-        features_df = pd.DataFrame.from_dict(
-            data={"frequency_scores": i_Xtr},
-            orient='columns'
-        )
+        # features_df = pd.DataFrame.from_dict(
+        #     data={"frequency_scores": i_Xtr},
+        #     orient='columns'
+        # )
+        features_df = pd.DataFrame.from_dict(data=i_Xtr, orient='columns')
         labels_df = pd.DataFrame.from_dict(
             data={"labels": i_ytr},
             orient='columns'
@@ -157,14 +207,14 @@ class LinagoraWinningPredictor:
     def _build_internal_knn_train_set(self, sender, X_train):
         sender_idx = X_train["sender"] == sender
         X_train_sender = X_train[sender_idx]
-        sender_messages = X_train_sender["body"].tolist()
-        n_sender_mesages = len(sender_messages)
+        sender_msgs = X_train_sender["body"].tolist()
+        n_sender_mesages = len(sender_msgs)
         sender_mids = np.array(X_train_sender.index.tolist())
         train_recipients = self.train_senders_recipients[sender]
 
         # Compute knn features for the sender
-        i_Xtr = {}
-        i_ytr = {}
+        i_Xtr = dict()
+        i_ytr = dict()
 
         ## Parameter
         n_splits = 10
@@ -176,20 +226,20 @@ class LinagoraWinningPredictor:
         ct_split_indexes = kf.split(complete_train_indexes)
 
         for keep_fold_indexes, leave_fold_indexes in ct_split_indexes:
-            keep_messages = np.array(sender_messages)[keep_fold_indexes]
-            leave_messages = np.array(sender_messages)[leave_fold_indexes]
+            keep_msgs = np.array(sender_msgs)[keep_fold_indexes]
+            leave_msgs = np.array(sender_msgs)[leave_fold_indexes]
             tfidf_vectorizer = TfidfVectorizer(
-                ngram_range=(1,2),
+                ngram_range=(1, 2),
             )
             # Fit the tfidf
-            keep_tfidf = tfidf_vectorizer.fit_transform(keep_messages).todense()
+            keep_tfidf = tfidf_vectorizer.fit_transform(keep_msgs).todense()
 
             # Make predictions on the fold left
-            leave_tfidf = tfidf_vectorizer.transform(leave_messages).todense()
+            leave_tfidf = tfidf_vectorizer.transform(leave_msgs).todense()
             leave_keep_distances = leave_tfidf.dot(keep_tfidf.T)
             order = np.argsort(leave_keep_distances)
             order = np.fliplr(order)
-            nb_keep_messages = order.shape[1]
+            nb_keep_msgs = order.shape[1]
 
             mids_to_predict = sender_mids[leave_fold_indexes]
             for i, mid_to_predict in enumerate(mids_to_predict):
@@ -199,16 +249,16 @@ class LinagoraWinningPredictor:
                     recipients_score[recipient] = 0
 
                 ## Parameter
-                n_selected_messages = 30
-                for j in range(min(n_selected_messages, nb_keep_messages)):
-                    # if j >= nb_keep_messages:
+                n_selected_msgs = 30
+                for j in range(min(n_selected_msgs, nb_keep_msgs)):
+                    # if j >= nb_keep_msgs:
                     #     continue
-                    message_keep_idx = order[i, j]
-                    message_real_idx = keep_fold_indexes[order[i, j]]
-                    message_recipients = train_recipients[message_real_idx]
-                    for recipient in message_recipients:
+                    msg_keep_idx = order[i, j]
+                    msg_real_idx = keep_fold_indexes[order[i, j]]
+                    msg_recipients = train_recipients[msg_real_idx]
+                    for recipient in msg_recipients:
                         recipients_score[recipient] += (
-                            leave_keep_distances[i, message_keep_idx]
+                            leave_keep_distances[i, msg_keep_idx]
                         )
 
                 # Fill the feature dict
@@ -226,17 +276,12 @@ class LinagoraWinningPredictor:
     def fit(self, X_train, y_train):
         # Save all unique sender names in X
         self.all_train_senders = X_train["sender"].unique().tolist()
-        self.all_users = self.all_train_senders
         # Store X_train and y_train in the model to access it in predict
-        # and avoid unnecessary computations
+        # and avoid unnecessary computation
         self.X_train = X_train
         self.y_train = y_train
 
-        print(
-            "\n\tBuild i_Xtr and fit model for each sender ... ",
-            # end="",
-            # flush=True
-        )
+        print("\n\tBuild i_Xtr and fit model for each sender ... ")
 
         # Printing parameters
         n_senders = len(self.all_train_senders)
@@ -247,11 +292,15 @@ class LinagoraWinningPredictor:
             # Print the advancement of the training
             if i > (percentage_trained + percentage_step) * n_senders:
                 percentage_trained += percentage_step
-                print("\t\t{percentage}% of the senders have been trained"
-                      .format(percentage=int(round(100 * percentage_trained,0))))
+                print(
+                    "\t\t{percentage}% of the senders have been trained"
+                    .format(
+                        percentage=int(round(100 * percentage_trained, 0))
+                    )
+                )
 
-            # Compute the
-            self.train_senders_recipients[sender] = []
+            # Compute the train recipients per sender
+            self.train_senders_recipients[sender] = list()
             sender_idx = X_train["sender"] == sender
             for recipients in y_train[sender_idx]["recipients"].tolist():
                 self.train_senders_recipients[sender].append(
@@ -260,8 +309,22 @@ class LinagoraWinningPredictor:
 
             # Compute sender address book
             self.global_ab[sender] = (
-                compute_ab(sender, X_train, y_train, recency=None)
+                compute_ab(sender, X_train, y_train)
             )
+
+            # Compute recent time sender address book
+            for time_recency in self.time_recency:
+                self.time_recent_ab[time_recency][sender] = (
+                    compute_ab(sender, X_train, y_train,
+                               time_recency=time_recency)
+                )
+
+            # Compute recent message sender address book
+            for msg_recency in self.msg_recency:
+                self.msg_recent_ab[msg_recency][sender] = (
+                    compute_ab(sender, X_train, y_train,
+                               message_recency=msg_recency)
+                )
 
             # Compute first names address book
             self.first_names_ab[sender] = (
@@ -275,7 +338,20 @@ class LinagoraWinningPredictor:
             knn_features_df = self._build_internal_knn_train_set(sender, X_train)
 
             train_df = features_df.join(labels_df).join(knn_features_df)
-            i_Xtr = train_df[["frequency_scores", "knn_scores"]].as_matrix()
+            # train_df = &ls"] = labels_df["labels"]
+            feature_names = ["knn_scores"]  # , "frequency_scores"]
+
+            for msg_recency in self.msg_recency:
+                feature_names.append(
+                    "msg_recency_{}_frequency".format(msg_recency)
+                )
+
+            for time_recency in self.time_recency:
+                feature_names.append(
+                    "time_recency_{}_frequency".format(time_recency)
+                )
+
+            i_Xtr = train_df[feature_names].as_matrix()
             i_ytr = train_df["labels"].as_matrix()
 
             if 0 not in i_ytr:
@@ -298,12 +374,12 @@ class LinagoraWinningPredictor:
             """
             sender_idx = X_train["sender"] == sender
             X_train_sender = X_train[sender_idx]
-            sender_messages = X_train_sender["body"].tolist()
+            sender_msgs = X_train_sender["body"].tolist()
 
             tfidf_vectorizer = TfidfVectorizer(
-                ngram_range=(1,2),
+                ngram_range=(1, 2),
             )
-            tfidf_matrix = (tfidf_vectorizer.fit_transform(sender_messages)
+            tfidf_matrix = (tfidf_vectorizer.fit_transform(sender_msgs)
                                             .todense())
 
             self.train_senders_tfidf[sender] = tfidf_matrix
@@ -313,23 +389,56 @@ class LinagoraWinningPredictor:
 
     def _build_internal_test_set(self, sender, X_test):
         # i_Xte for internal X test
-        i_Xte = dict()
+        # i_Xte = dict()
+        i_Xte = defaultdict(lambda: defaultdict(float))
         sender_idx = X_test["sender"] == sender
         # Thanks God every sender in test appears in train
-        global_sender_ab_list = list(self.global_ab[sender].elements())
+        global_sender_contacts = list(self.global_ab[sender].elements())
+        time_recent_contacts = dict()
+        msg_recent_contacts = dict()
+
+        for time_recency in self.time_recency:
+            time_recent_contacts[time_recency] = (
+                list(self.time_recent_ab[time_recency][sender].elements())
+            )
+
+        for msg_recency in self.msg_recency:
+            msg_recent_contacts[msg_recency] = (
+                list(self.msg_recent_ab[msg_recency][sender].elements())
+            )
+
         potential_recipients = self.global_ab[sender].keys()
         for mid in X_test[sender_idx].index.tolist():
             for recipient in potential_recipients:
-                i_Xte[(mid, recipient)] = (
+                i_Xte["frequency_scores"][(mid, recipient)] = (
                     self.global_ab[sender][recipient]
-                    / len(global_sender_ab_list)
+                    / len(global_sender_contacts)
                 )
+                if self.time_recency is not None:
+                    for time_recency in self.time_recency:
+                        time_recency_feature_name = (
+                            "time_recency_{}_frequency".format(time_recency)
+                        )
+                        i_Xte[time_recency_feature_name][(mid, recipient)] = (
+                            self.time_recent_ab[time_recency][sender][recipient]
+                            / len(time_recent_contacts)
+                        )
+                if self.msg_recency is not None:
+                    for msg_recency in self.msg_recency:
+                        msg_recency_feature_name = (
+                            "msg_recency_{}_frequency".format(msg_recency)
+                        )
+                        i_Xte[msg_recency_feature_name][(mid, recipient)] = (
+                            self.msg_recent_ab[msg_recency][sender][recipient]
+                            / len(msg_recent_contacts)
+                        )
 
         # Compute dataframes from the features dict and the labels dict
-        test_features_df = pd.DataFrame.from_dict(
-            data={"frequency_scores": i_Xte},
-            orient='columns',
-        )
+        # test_features_df = pd.DataFrame.from_dict(
+        #     data={"frequency_scores": i_Xte},
+        #     orient='columns',
+        # )
+        test_features_df = pd.DataFrame.from_dict(data=i_Xte, orient='columns')
 
         # Return the internal test set
         return test_features_df
@@ -345,32 +454,32 @@ class LinagoraWinningPredictor:
 
         sender_idx = X_test["sender"] == sender
         X_test_sender = X_test[sender_idx]
-        sender_messages = X_test_sender["body"].tolist()
-        n_test_sender_messages = len(sender_messages)
+        sender_msgs = X_test_sender["body"].tolist()
+        n_test_sender_msgs = len(sender_msgs)
         test_sender_mids = X_test_sender.index.tolist()
 
         # Compute the tfidf of the test messages
-        test_tfidf_matrix = vectorizer.transform(sender_messages).todense()
+        test_tfidf_matrix = vectorizer.transform(sender_msgs).todense()
 
         # Compute the matrix of cosine similarities and its argsort
         distances = test_tfidf_matrix.dot(train_tfidf_matrix.T)
         order = np.argsort(distances)
         order = np.fliplr(order)
 
-        nb_train_messages = order.shape[1]
+        nb_train_msgs = order.shape[1]
 
         for i, mid_to_predict in enumerate(test_sender_mids):
             ## Parameter
-            n_selected_messages = 30
+            n_selected_msgs = 30
             recipients_score = dict()
             for recipient in self.global_ab[sender].keys():
                 recipients_score[recipient] = 0
 
-            for j in range(min(n_selected_messages, nb_train_messages)):
-                train_message_idx = order[i, j]
-                message_recipients = train_recipients[train_message_idx]
-                for recipient in message_recipients:
-                    recipients_score[recipient] += distances[i, train_message_idx]
+            for j in range(min(n_selected_msgs, nb_train_msgs)):
+                train_msg_idx = order[i, j]
+                msg_recipients = train_recipients[train_msg_idx]
+                for recipient in msg_recipients:
+                    recipients_score[recipient] += distances[i, train_msg_idx]
             # Fill the features dict
             for recipient, score in recipients_score.items():
                 i_Xte[(mid_to_predict,recipient)] = score
@@ -393,9 +502,9 @@ class LinagoraWinningPredictor:
             mid_recipients = self.y_train.loc[mid]["recipients"].split(" ")
             if contact_i in mid_recipients and contact_j in mid_recipients:
                 n_co_occurences += 1
-        n_messages_to_contact_i = self.global_ab[sender][contact_i]
+        n_msgs_to_contact_i = self.global_ab[sender][contact_i]
 
-        return n_co_occurences / n_messages_to_contact_i
+        return n_co_occurences / n_msgs_to_contact_i
 
     def predict(self, X_test, y_true=None, store_scores=True,
                 use_cooccurrences=False, store_i_Xte=None,
@@ -424,15 +533,37 @@ class LinagoraWinningPredictor:
             )
 
             for mid in X_test[sender_idx].index.tolist():
-                ################################################################
-                i_Xte = test_features_df.loc[mid].as_matrix()
-                recipients_list = test_features_df.loc[mid].index.tolist()
+                feature_names = ["knn_scores"] # , "frequency_scores"]
+
+                for msg_recency in self.msg_recency:
+                    feature_names.append(
+                        "msg_recency_{}_frequency".format(msg_recency)
+                    )
+
+                for time_recency in self.time_recency:
+                    feature_names.append(
+                        "time_recency_{}_frequency".format(time_recency)
+                    )
+
+                i_Xte = test_features_df[feature_names].loc[mid].as_matrix()
+
+                recipients_list = (
+                    test_features_df.loc[mid].index.tolist()
+                )
+                # i_Xte = test_features_df.loc[mid].as_matrix()
                 if self.lgbm[sender] == 1:
                     # Handle the case when there were no 0 in i_ytr
                     # In that case, the algorithm could not learn
                     predictions[mid] = recipients_list[:10]
                 else:
                     mid_pred_probas = self.lgbm[sender].predict_proba(i_Xte)[:, 1]
+                    best_recipients = np.argsort(mid_pred_probas)[::-1][:10]
+
+                    # predictions[mid] = [
+                    #     recipients_list[recipient_index]
+                    #     for recipient_index in best_recipients
+                    # ]
+
                     unique_r_ab = np.array(recipients_list)
                     # Predict first the first names found in the body
                     truncated_body = (
@@ -755,7 +886,7 @@ class LinagoraTfidfPredictor:
                     train_message_idx = order[i, selection_idx]
                     message_recipients = train_recipients[train_message_idx]
                     for recipient in message_recipients:
-                        recipients_score[recipient] += distances[i, train_message_idx]**2
+                        recipients_score[recipient] += distances[i, train_message_idx]
 
 
 

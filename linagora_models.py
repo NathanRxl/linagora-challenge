@@ -310,7 +310,7 @@ class LinagoraWinningPredictor:
         return n_co_occurences / n_messages_to_contact_i
 
     def predict(self, X_test, y_true=None, store_scores=True,
-                use_cooccurrences=True, store_i_Xte=None,
+                use_cooccurrences=False, store_i_Xte=None,
                 precomputed_i_Xte=None, store_cooccurrences=None,
                 precomputed_cooccurrences=None):
         if use_cooccurrences and precomputed_cooccurrences is not None:

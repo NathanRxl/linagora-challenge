@@ -1,18 +1,3 @@
-# TODO: 1-Preprocess invalid sender emails
-# TODO: 1T-Think of a way to extract features from the text : theme, "FYI",
-# TODO: cited names "Hi Ben",
-# TODO: "Thanks David", ...
-# TODO: 2T-Try and use pre-trained word embeddings (e.g., Google News),
-# TODO: part-of-speech taggers
-
-# TODO: 1G-Think of a way to use a well designed graph and build it
-# TODO: 1G-Nodes = all possible recipients, Edges = message sent at least once,
-# TODO: Weight = number of
-# TODO: messages sent
-# TODO: 2G-Use possible relations between recipients
-# TODO: (for example "Ben is almost always informed with Franck about
-# TODO: football")
-
 import pandas as pd
 import preprocessing
 from time import time
@@ -36,6 +21,7 @@ preprocessed_train_df = preprocessing.merge(train_df, train_info_df)
 preprocessed_train_df['date'] = (
     preprocessing.preprocess_dates(preprocessed_train_df)
 )
+preprocessed_train_df = preprocessed_train_df.sort_values(by="date")
 preprocessed_train_df = preprocessed_train_df[preprocessed_train_df['date'] >= '2001-06']
 preprocessed_train_df['recipients'] = (
     preprocessed_train_df['recipients'].apply(

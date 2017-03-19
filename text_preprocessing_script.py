@@ -29,24 +29,24 @@ preprocessed_training_df.to_csv(path_to_data + preprocessed_train_filename)
 print("OK", end="\n\n")
 
 
-# print("\tLoad test data ... ", end="", flush=True)
-# test_df = (
-#     pd.read_csv(path_to_data + 'preprocessed_test.csv', index_col="mid")
-# )
-# print("\tOK")
+print("\tLoad test data ... ", end="", flush=True)
+test_df = (
+    pd.read_csv(path_to_data + 'preprocessed_test.csv', index_col="mid")
+)
+print("\tOK")
 
-# print("\tPreprocess test data ... ")
-# preprocessed_testing_df = preprocessing.clean_emails_bodies(test_df)
-# print("OK")
+print("\tPreprocess test data ... ")
+preprocessed_testing_df = preprocessing.clean_emails_bodies(test_df)
+print("OK")
 
-# preprocessed_test_filename = "text_preprocessed_test.csv"
-# print(
-#     "\tCreate " + path_to_data + preprocessed_test_filename + " file ... ",
-#     end="",
-#     flush=True
-# )
-# preprocessed_testing_df.to_csv(path_to_data + preprocessed_test_filename)
-# print("OK", end="\n\n")
+preprocessed_test_filename = "text_preprocessed_test.csv"
+print(
+    "\tCreate " + path_to_data + preprocessed_test_filename + " file ... ",
+    end="",
+    flush=True
+)
+preprocessed_testing_df.to_csv(path_to_data + preprocessed_test_filename)
+print("OK", end="\n\n")
 
 
 print(

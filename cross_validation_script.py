@@ -12,6 +12,7 @@ from linagora_models import (FrequencyPredictor, LinagoraWinningPredictor,
 
 initial_time = time()
 n_splits = 3
+np.random.seed(3)
 
 print("Cross-validation script", end="\n\n")
 
@@ -44,9 +45,9 @@ for n_fold, (train_fold_index, test_fold_index) in enumerate(cv_split_indexes):
     model = LinagoraKnnPredictor()
     model.fit(X_train, y_train)
 
-    precomputed_cooccurrences = (
-        path_to_data + "co_occurrences_cv_{}-3.json".format(n_fold + 1)
-    )
+    # precomputed_cooccurrences = (
+    #     path_to_data + "co_occurrences_cv_{}-3.json".format(n_fold + 1)
+    # )
     y_predict = model.predict(X_test)
 
     # Compute true mids_prediction dict from df

@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from time import time
 
 from general_tools import split_xy, true_recipients, Submissioner
@@ -8,6 +9,7 @@ from linagora_models import (FrequencyPredictor, LinagoraWinningPredictor,
 from model_evaluation import metrics
 
 initial_time = time()
+np.random.seed(1)
 
 print("Pipeline script", end="\n\n")
 
@@ -72,7 +74,7 @@ submission_folder_path = "submissions/"
 
 Submissioner.create_submission(
     y_pred,
-    output_filename="predictions_knn_names_frequency_8.txt"
+    output_filename="best_submission.txt"
 )
 print("OK")
 

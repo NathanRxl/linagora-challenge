@@ -565,6 +565,7 @@ class LinagoraWinningPredictor:
                     # ]
 
                     unique_r_ab = np.array(recipients_list)
+                    # pdb.set_trace()
                     # Predict first the first names found in the body
                     truncated_body = (
                         text_tools.truncate_body(X_test.loc[mid]["body"])
@@ -979,7 +980,6 @@ class LinagoraKnnPredictor:
                 recipients_score = dict()
                 ## Parameter
                 n_selected_messages = 30
-                # n_selected_messages = 5
                 true_recipients = (y_train.loc[mid_to_predict]["recipients"]
                                           .split(" "))
                 for recipient in self.address_books[sender].keys():
@@ -989,8 +989,6 @@ class LinagoraKnnPredictor:
                     recipients_score[recipient] = 0
 
                 for j in range(min(n_selected_messages, nb_keep_messages)):
-                    # if j >= nb_keep_messages:
-                    #     continue
                     message_keep_idx = order[i, j]
                     message_real_idx = keep_fold_indexes[order[i, j]]
                     message_recipients = train_recipients[message_real_idx]
@@ -1002,7 +1000,6 @@ class LinagoraKnnPredictor:
                 # Fill the feature dict
                 for recipient, score in recipients_score.items():
                     i_Xtr[(mid_to_predict,recipient)] = score
-
 
         # Compute dataframes from the features dict and the labels dict
         features_df = pd.DataFrame.from_dict(
@@ -1071,7 +1068,7 @@ class LinagoraKnnPredictor:
         self.all_train_senders = X_train["sender"].unique().tolist()
         # Save all unique user names
         self.all_users = set(self.all_train_senders)
-
+        # pdb.set_trace()
         for sender_nb, sender in enumerate(self.all_train_senders):
             self.train_senders_recipients[sender] = []
             sender_recipients = []
@@ -1179,17 +1176,7 @@ class LinagoraKnnPredictor:
                     # In that case, the algorithm could not learn
                     predictions[mid] = recipients_list[:10]
                 else:
-                    # mid_pred_probas = self.lgbm[sender].predict_proba(i_Xte)[:, 1]
                     mid_pred_probas = i_Xte.flatten()
-                    # Sort the predictions
-                    # best_recipients_indexes = np.argsort(mid_pred_probas)[::-1][:10]
-                    # best_recipients_indexes = np.argsort(i_Xte.flatten())[::-1][:10]
-                    # predictions[mid] = [
-                    #     recipients_list[recipient_index]
-                    #     for recipient_index in best_recipients_indexes
-                    # ]
-
-                    # Put the 10 best predictions in the dict
 
                     # Use the names to compute the best recipients
                     unique_r_ab = np.array(recipients_list)
@@ -1239,6 +1226,21 @@ class LinagoraKnnPredictor:
                     prediction = (
                         (prediction_outside_ab + list(unique_r_ab[best_r]))[:10]
                     )
+
+                    # Use the frequencies to modify the last predictions
+                    if len(prediction) == 10:
+                        new_predictions = 0
+                        most_common_recipients = (
+                            self.address_books[sender].most_common()
+                        )
+                        for recipient, frequency in most_common_recipients:
+                            if new_predictions == 2:
+                                break
+                            if recipient not in prediction[:8]:
+                                prediction[8 + new_predictions] = recipient
+                                new_predictions += 1
+
+                    # Fill the mid_prediction dict
                     predictions[mid] = prediction
 
         return predictions

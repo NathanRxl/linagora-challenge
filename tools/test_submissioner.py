@@ -1,4 +1,4 @@
-from . import Submissioner
+from .Submissioner import create_submission
 import pandas as pd
 import unittest
 
@@ -19,12 +19,20 @@ class TestSubmissioner(unittest.TestCase):
 
     def test_submissioner(self):
         submission_folder = "../submissions/"
-        baseline_file = submission_folder + "predictions_frequency.txt"
-        baseline_pred = mids_prediction_from_file(baseline_file)
+        baseline_file = "predictions_frequency.txt"
+        baseline_pred = mids_prediction_from_file(
+            submission_folder + baseline_file
+        )
 
-        baseline_test_file = submission_folder + "predictions_frequency_test.txt"
-        Submissioner.create_submission(baseline_pred, output_filename=baseline_test_file)
-        test_baseline_pred = mids_prediction_from_file(baseline_test_file)
+        baseline_test_file = "predictions_frequency_test.txt"
+        create_submission(
+            baseline_pred,
+            submission_folder_path=submission_folder,
+            output_filename=baseline_test_file
+        )
+        test_baseline_pred = mids_prediction_from_file(
+            submission_folder + baseline_test_file
+        )
 
         self.assertEqual(baseline_pred, test_baseline_pred)
 

@@ -2,9 +2,8 @@ import pandas as pd
 import numpy as np
 from time import time
 
-from general_tools import split_xy, true_recipients, Submissioner
+import tools
 from linagora_models import LinagoraWinningPredictor, LinagoraKnnPredictor
-from model_evaluation import metrics
 
 initial_time = time()
 np.random.seed(1)
@@ -20,13 +19,11 @@ precomputed_test_cooc = path_to_data + "co_occurrences_test_pipeline.json"
 print("\tLoad preprocessed train data ... ", end="", flush=True)
 # Load training data
 train_df = (
-    # pd.read_csv(path_to_data + 'preprocessed_train.csv',
-    #             index_col="mid", parse_dates=["date"])
     pd.read_csv(path_to_data + 'text_preprocessed_train.csv', index_col="mid")
 )
 
 # Split training data into X_train and y_train
-X_train, y_train = split_xy(train_df)
+X_train, y_train = tools.split_xy(train_df)
 print("OK")
 
 # Initiate the model
@@ -52,9 +49,10 @@ model.fit(X_train, y_train)
 
 print("\tLoad preprocessed test data ... ", end="", flush=True)
 # Load test data
-# X_test = pd.read_csv(path_to_data + 'preprocessed_test.csv',
-#                      index_col="mid", parse_dates=["date"])
-X_test = pd.read_csv(path_to_data + 'text_preprocessed_test.csv', index_col="mid")
+X_test = pd.read_csv(
+    path_to_data + 'text_preprocessed_test.csv',
+    index_col="mid"
+)
 print("OK")
 
 print("\tMake predictions on test data ... ", end="", flush=True)
@@ -70,7 +68,7 @@ print(
 # Create Kaggle submission
 submission_folder_path = "submissions/"
 
-Submissioner.create_submission(
+tools.create_submission(
     y_pred,
     output_filename="best_submission.txt"
 )

@@ -4,10 +4,8 @@ import numpy as np
 from sklearn.model_selection import KFold
 
 from model_evaluation import metrics
-from general_tools import split_xy, true_recipients
-from linagora_models import  LinagoraWinningPredictor, LinagoraKnnPredictor
-
-
+from tools import split_xy, true_recipients
+from linagora_models import LinagoraWinningPredictor, LinagoraKnnPredictor
 
 initial_time = time()
 n_splits = 3
@@ -20,8 +18,6 @@ path_to_data = "data/"
 # Load data
 complete_train_df = pd.read_csv(path_to_data + 'text_preprocessed_train.csv',
                                 index_col="mid", parse_dates=["date"])
-# complete_train_df = pd.read_csv(path_to_data + 'text_preprocessed_train.csv',
-#                                 index_col="mid")
 complete_train_index = complete_train_df.index.tolist()
 
 # Use KFold from sklearn
@@ -30,10 +26,7 @@ kf = KFold(n_splits=n_splits, shuffle=True, random_state=2)
 cv_scores = []
 cv_split_indexes = kf.split(complete_train_index)
 for n_fold, (train_fold_index, test_fold_index) in enumerate(cv_split_indexes):
-    print(
-        "Start working on fold number", n_fold + 1, "... ",
-        end="", flush=True
-    )
+    print("Start working on fold number", n_fold + 1, "... ")
     train_fold_df = complete_train_df.iloc[train_fold_index]
     test_fold_df = complete_train_df.iloc[test_fold_index]
 

@@ -1,17 +1,7 @@
 from collections import Counter, defaultdict
-import math
-import random
-import warnings
-import tables
-import operator
 from time import time
-from datetime import datetime, timedelta
-import json
-import atexit
-
-from model_evaluation import metrics
-import general_tools
-import text_tools
+from datetime import timedelta
+import tools
 
 import numpy as np
 import pandas as pd
@@ -20,8 +10,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import KFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-
-import pdb
 
 
 def use_precomputed_cache(cache):
@@ -42,8 +30,12 @@ def compute_ab(sender, X_train, y_train, time_recency=None,
     sender_idx = X_train["sender"] == sender
 
     if time_recency is not None:
-        first_recent_date = X_train[sender_idx]['date'].max() - timedelta(days=time_recency)
-        recent_sender_idx = (X_train[sender_idx]['date'] >= first_recent_date).index
+        first_recent_date = (
+            X_train[sender_idx]['date'].max() - timedelta(days=time_recency)
+        )
+        recent_sender_idx = (
+            (X_train[sender_idx]['date'] >= first_recent_date).index
+        )
         sender_recipients_list = (
             y_train.loc[recent_sender_idx]["recipients"].tolist()
         )
@@ -127,7 +119,7 @@ class LinagoraWinningPredictor:
             message_recency if message_recency is not None else list()
         )
         self.all_train_senders = list()
-        # Dict of lgbm (one per user)
+        # Dict of lgbm (one per sender)
         self.lgbm = dict()
         self.global_ab = dict()
         self.time_recent_ab = defaultdict(dict)
@@ -195,7 +187,6 @@ class LinagoraWinningPredictor:
         )
         return features_df, labels_df
 
-
     def _build_internal_knn_train_set(self, sender, X_train):
         sender_idx = X_train["sender"] == sender
         X_train_sender = X_train[sender_idx]
@@ -206,12 +197,10 @@ class LinagoraWinningPredictor:
 
         # Compute knn features for the sender
         i_Xtr = dict()
-        i_ytr = dict()
 
-        ## Parameter
+        # Number of splits
         n_splits = 10
         if n_sender_mesages < n_splits:
-            ## Parameter
             n_splits = 2
         kf = KFold(n_splits=n_splits, shuffle=True, random_state=2)
         complete_train_indexes = np.arange(n_sender_mesages)
@@ -220,9 +209,7 @@ class LinagoraWinningPredictor:
         for keep_fold_indexes, leave_fold_indexes in ct_split_indexes:
             keep_msgs = np.array(sender_msgs)[keep_fold_indexes]
             leave_msgs = np.array(sender_msgs)[leave_fold_indexes]
-            tfidf_vectorizer = TfidfVectorizer(
-                ngram_range=(1, 2),
-            )
+            tfidf_vectorizer = TfidfVectorizer(ngram_range=(1, 2))
             # Fit the tfidf
             keep_tfidf = tfidf_vectorizer.fit_transform(keep_msgs).todense()
 
@@ -240,11 +227,9 @@ class LinagoraWinningPredictor:
                 for recipient in self.global_ab[sender].keys():
                     recipients_score[recipient] = 0
 
-                ## Parameter
+                # Parameter
                 n_selected_msgs = 30
                 for j in range(min(n_selected_msgs, nb_keep_msgs)):
-                    # if j >= nb_keep_msgs:
-                    #     continue
                     msg_keep_idx = order[i, j]
                     msg_real_idx = keep_fold_indexes[order[i, j]]
                     msg_recipients = train_recipients[msg_real_idx]
@@ -263,7 +248,6 @@ class LinagoraWinningPredictor:
             orient='columns'
         )
         return features_df
-
 
     def fit(self, X_train, y_train):
         # Save all unique sender names in X
@@ -327,7 +311,9 @@ class LinagoraWinningPredictor:
             features_df, labels_df = (
                 self._build_internal_train_sets(sender, X_train, y_train)
             )
-            knn_features_df = self._build_internal_knn_train_set(sender, X_train)
+            knn_features_df = (
+                self._build_internal_knn_train_set(sender, X_train)
+            )
 
             train_df = features_df.join(labels_df).join(knn_features_df)
             # train_df = &ls"] = labels_df["labels"]
@@ -360,19 +346,16 @@ class LinagoraWinningPredictor:
                 )
                 self.lgbm[sender].fit(i_Xtr, i_ytr)
 
-            """
-            Compute the tfidf matrices and vectorizers.
-            They will be used for the predictions.
-            """
+            # Compute the tfidf matrices and vectorizers.
+            # They will be used for the predictions.
             sender_idx = X_train["sender"] == sender
             X_train_sender = X_train[sender_idx]
             sender_msgs = X_train_sender["body"].tolist()
 
-            tfidf_vectorizer = TfidfVectorizer(
-                ngram_range=(1, 2),
+            tfidf_vectorizer = TfidfVectorizer(ngram_range=(1, 2))
+            tfidf_matrix = (
+                tfidf_vectorizer.fit_transform(sender_msgs).todense()
             )
-            tfidf_matrix = (tfidf_vectorizer.fit_transform(sender_msgs)
-                                            .todense())
 
             self.train_senders_tfidf[sender] = tfidf_matrix
             self.train_senders_vectorizers[sender] = tfidf_vectorizer
@@ -429,11 +412,11 @@ class LinagoraWinningPredictor:
         # Return the internal test set
         return test_features_df
 
-
     def _build_internal_knn_test_set(self, sender, X_test):
         i_Xte = {}
 
-        # Get the already computed vectorizer, tfidf_matrix and recipients lists
+        # Get the already computed vectorizer, tfidf_matrix
+        # and recipients lists
         vectorizer = self.train_senders_vectorizers[sender]
         train_tfidf_matrix = self.train_senders_tfidf[sender]
         train_recipients = self.train_senders_recipients[sender]
@@ -441,7 +424,6 @@ class LinagoraWinningPredictor:
         sender_idx = X_test["sender"] == sender
         X_test_sender = X_test[sender_idx]
         sender_msgs = X_test_sender["body"].tolist()
-        n_test_sender_msgs = len(sender_msgs)
         test_sender_mids = X_test_sender.index.tolist()
 
         # Compute the tfidf of the test messages
@@ -455,7 +437,7 @@ class LinagoraWinningPredictor:
         nb_train_msgs = order.shape[1]
 
         for i, mid_to_predict in enumerate(test_sender_mids):
-            ## Parameter
+            # Parameter
             n_selected_msgs = 30
             recipients_score = dict()
             for recipient in self.global_ab[sender].keys():
@@ -470,7 +452,7 @@ class LinagoraWinningPredictor:
             for recipient, score in recipients_score.items():
                 i_Xte[(mid_to_predict,recipient)] = score
 
-        # Compute dataframes from the features dict and the labels dict
+        # Compute data frames from the features dict and the labels dict
         test_features_df = pd.DataFrame.from_dict(
             data={"knn_scores": i_Xte},
             orient='columns',
@@ -492,10 +474,7 @@ class LinagoraWinningPredictor:
 
         return n_co_occurences / n_msgs_to_contact_i
 
-    def predict(self, X_test, y_true=None, store_scores=True,
-                use_cooccurrences=False, store_i_Xte=None,
-                precomputed_i_Xte=None, store_cooccurrences=None,
-                precomputed_cooccurrences=None):
+    def predict(self, X_test):
         predictions = dict()
         # Save all unique sender names in X
         all_test_senders = X_test["sender"].unique().tolist()
@@ -519,7 +498,7 @@ class LinagoraWinningPredictor:
             )
 
             for mid in X_test[sender_idx].index.tolist():
-                feature_names = ["knn_scores"] # , "frequency_scores"]
+                feature_names = ["knn_scores"]
 
                 for msg_recency in self.msg_recency:
                     feature_names.append(
@@ -541,66 +520,71 @@ class LinagoraWinningPredictor:
                     # In that case, the algorithm could not learn
                     predictions[mid] = recipients_list[:10]
                 else:
-                    mid_pred_probas = self.lgbm[sender].predict_proba(i_Xte)[:, 1]
-                    best_recipients = np.argsort(mid_pred_probas)[::-1][:10]
+                    mid_pred_probas = (
+                        self.lgbm[sender].predict_proba(i_Xte)[:, 1]
+                    )
 
                     unique_r_ab = np.array(recipients_list)
                     # Predict first the first names found in the body
-                    truncated_body = (
-                        text_tools.truncate_body(X_test.loc[mid]["body"])
-                    )
+                    trunc_body = tools.truncate_body(X_test.loc[mid]["body"])
                     best_r = np.array(list(), int)
                     prediction_outside_ab = []
 
                     for first_name in self.first_names_ab[sender].keys():
-                        if first_name in truncated_body:
-                            if len(truncated_body[truncated_body.find(first_name):]) < 5:
+                        if first_name in trunc_body:
+                            if len(trunc_body[trunc_body.find(first_name):]) < 5:
                                 # james.d.steffes and rick.buy@enron.com
                                 # tend to write very short mails
                                 # and sign Jim or Rick. This is an attempt to
                                 # reduce these kind of false positives.
-                                # print(first_name, truncated_body, mid, sender)
                                 continue
 
-                            if first_name == " don " and " don t" in truncated_body:
+                            if first_name == " don " and " don t" in trunc_body:
                                 # Obvious false positive
                                 continue
 
-                            possible_r = self.first_names_ab[sender][first_name]
+                            possible_r = (
+                                self.first_names_ab[sender][first_name]
+                            )
                             recipient_idxs = list()
-                            recipient_pred_probas = list()
+                            r_pred_probas = list()
                             for recipient in possible_r:
                                 recipient_idxs.append(
                                     np.where(recipient == unique_r_ab)[0][0]
                                 )
-                                recipient_pred_probas.append(
+                                r_pred_probas.append(
                                     mid_pred_probas[recipient_idxs[-1]]
                                 )
-                            max_probas_named_r = np.max(recipient_pred_probas)
+                            max_probas_named_r = np.max(r_pred_probas)
                             mask = (
                                 np.array(
-                                    recipient_pred_probas > max_probas_named_r - 0.01,
+                                    r_pred_probas >
+                                    max_probas_named_r - 0.01,
                                     int
                                 )
                             )
-                            masked_recipient_pred_probas = (
-                                recipient_pred_probas * mask
-                            )
+                            masked_r_pred_probas = r_pred_probas * mask
                             most_probable_named_r = (
-                                np.argsort(masked_recipient_pred_probas)[::-1]
+                                np.argsort(masked_r_pred_probas)[::-1]
                             )
                             for most_probable_r in most_probable_named_r:
-                                if masked_recipient_pred_probas[most_probable_r] != 0:
-                                    recipient_idx = recipient_idxs[most_probable_r]
+                                if masked_r_pred_probas[most_probable_r] != 0:
+                                    recipient_idx = (
+                                        recipient_idxs[most_probable_r]
+                                    )
                                     best_r = np.append(best_r, recipient_idx)
                                     mid_pred_probas[recipient_idx] = 0.0
 
                     still_to_predict = 10 - len(best_r)
-                    for pred in np.argsort(mid_pred_probas)[::-1][:still_to_predict]:
+                    pred_to_add = (
+                        np.argsort(mid_pred_probas)[::-1][:still_to_predict]
+                    )
+                    for pred in pred_to_add:
                         best_r = np.append(best_r, pred)
 
                     prediction = (
-                        (prediction_outside_ab + list(unique_r_ab[best_r]))[:10]
+                        (prediction_outside_ab +
+                         list(unique_r_ab[best_r]))[:10]
                     )
                     predictions[mid] = prediction
 
@@ -625,11 +609,11 @@ class LinagoraKnnPredictor:
         self.train_senders_recipients = dict()
         self.first_names_ab = dict()
 
-
     def _build_internal_test_set(self, sender, X_test):
         i_Xte = {}
 
-        # Get the already computed vectorizer, tfidf_matrix and recipients lists
+        # Get the already computed vectorizer, tfidf_matrix and
+        # recipients lists
         vectorizer = self.train_senders_vectorizers[sender]
         train_tfidf_matrix = self.train_senders_tfidf[sender]
         train_recipients = self.train_senders_recipients[sender]
@@ -637,7 +621,6 @@ class LinagoraKnnPredictor:
         sender_idx = X_test["sender"] == sender
         X_test_sender = X_test[sender_idx]
         sender_messages = X_test_sender["body"].tolist()
-        n_test_sender_messages = len(sender_messages)
         test_sender_mids = X_test_sender.index.tolist()
 
         # Compute the tfidf of the test messages
@@ -660,13 +643,17 @@ class LinagoraKnnPredictor:
                 train_message_idx = order[i, j]
                 message_recipients = train_recipients[train_message_idx]
                 for recipient in message_recipients:
-                    """
-                    The commented line below was used in the best submission we
-                    have submitted before the deadline but this was an error
-                    The correct line is the uncommented one.
-                    """
-                    # recipients_score[recipient] += distances[i, train_message_idx] ** 2
-                    recipients_score[recipient] += distances[i, train_message_idx]
+                    # The commented line below was used in the best submission
+                    # we have submitted before the deadline but this was only
+                    # a try we should have removed to submit.
+                    # The correct line is the uncommented one.
+
+                    # recipients_score[recipient] += (
+                    #     distances[i, train_message_idx] ** 2
+                    # )
+                    recipients_score[recipient] += (
+                        distances[i, train_message_idx]
+                    )
             # Fill the features dict
             for recipient, score in recipients_score.items():
                 i_Xte[(mid_to_predict,recipient)] = score
@@ -677,7 +664,6 @@ class LinagoraKnnPredictor:
             orient='columns',
         )
         return test_features_df
-
 
     def fit(self, X_train, y_train):
         # Save all unique sender names in X
@@ -717,20 +703,18 @@ class LinagoraKnnPredictor:
             # Print the advancement of the training
             if sender_nb > (percentage_trained + percentage_step) * n_senders:
                 percentage_trained += percentage_step
-                print("\t\t{percentage}% of the senders have been trained"
-                      .format(percentage=int(round(100 * percentage_trained,0))))
+                print(
+                    "\t\t{}% of the senders have been trained"
+                    .format(int(round(100 * percentage_trained, 0)))
+                )
 
-            """
-            Compute the tfidf matrices and vectorizers.
-            They will be used for the predictions.
-            """
+            # Compute the tfidf matrices and vectorizers.
+            # They will be used for the predictions.
             sender_idx = X_train["sender"] == sender
             X_train_sender = X_train[sender_idx]
             sender_messages = X_train_sender["body"].tolist()
 
-            tfidf_vectorizer = TfidfVectorizer(
-                ngram_range=(1,2),
-            )
+            tfidf_vectorizer = TfidfVectorizer(ngram_range=(1, 2))
             tfidf_matrix = (tfidf_vectorizer.fit_transform(sender_messages)
                                             .todense())
 
@@ -742,9 +726,6 @@ class LinagoraKnnPredictor:
         self.all_users = list(self.all_users)
 
     def predict(self, X_test):
-        # Will contain message ids and predictions for frequency predictions
-        sender_predictions = dict()
-
         # Save all unique sender names in test
         all_test_senders = X_test["sender"].unique().tolist()
 
@@ -763,22 +744,20 @@ class LinagoraKnnPredictor:
                 # Use the names to compute the best recipients
                 unique_r_ab = np.array(recipients_list)
                 # Predict first the first names found in the body
-                truncated_body = (
-                    text_tools.truncate_body(X_test.loc[mid]["body"])
-                )
+                trunc_body = tools.truncate_body(X_test.loc[mid]["body"])
                 best_r = np.array(list(), int)
                 prediction_outside_ab = []
 
                 for first_name in self.first_names_ab[sender].keys():
-                    if first_name in truncated_body:
-                        if len(truncated_body[truncated_body.find(first_name):]) < 5:
+                    if first_name in trunc_body:
+                        if len(trunc_body[trunc_body.find(first_name):]) < 5:
                             # james.d.steffes and rick.buy@enron.com
                             # tend to write very short mails
                             # and sign Jim or Rick. This is an attempt to
                             # reduce these kind of false positives.
                             continue
 
-                        if first_name == " don " and " don t" in truncated_body:
+                        if first_name == " don " and " don t" in trunc_body:
                             # Obvious false positive
                             continue
 

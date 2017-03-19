@@ -1,5 +1,5 @@
 import pandas as pd
-import text_tools
+import tools
 
 
 def merge(X_set, X_info):
@@ -33,7 +33,7 @@ def preprocess_dates(X):
     return pd.to_datetime(X_date, format="%Y-%m-%d %H:%M:%S")
 
 
-def clean_emails_bodies(df):
+def clean_email_bodies(df):
     """
     This function takes the test or train dataframe and returns the same
     dataframe with cleaned email bodies.
@@ -53,7 +53,7 @@ def clean_emails_bodies(df):
             print("\t\t{percentage}% of the messages have been cleaned"
                   .format(percentage=int(round(100 * percentage_cleaned,0))))
 
-        cleaned_messages_bodies.append(text_tools.clean_text(message_body))
+        cleaned_messages_bodies.append(tools.clean_text(message_body))
     cleaned_df["body"] = cleaned_messages_bodies
 
     return cleaned_df

@@ -1,10 +1,10 @@
 import pandas as pd
-import preprocessing
+import tools
 from time import time
 
 initial_time = time()
 
-print("Preprocessing script", end="\n\n")
+print("Csv preprocessing script", end="\n\n")
 
 path_to_data = "data/"
 
@@ -17,12 +17,14 @@ train_info_df = (
 print("OK")
 
 print("\tPreprocess train data ... ", end="", flush=True)
-preprocessed_train_df = preprocessing.merge(train_df, train_info_df)
+preprocessed_train_df = tools.merge(train_df, train_info_df)
 preprocessed_train_df['date'] = (
-    preprocessing.preprocess_dates(preprocessed_train_df)
+    tools.preprocess_dates(preprocessed_train_df)
 )
 preprocessed_train_df = preprocessed_train_df.sort_values(by="date")
-preprocessed_train_df = preprocessed_train_df[preprocessed_train_df['date'] >= '2001-06']
+preprocessed_train_df = (
+    preprocessed_train_df[preprocessed_train_df['date'] >= '2001-06']
+)
 preprocessed_train_df['recipients'] = (
     preprocessed_train_df['recipients'].apply(
         lambda recipients: [recipient
@@ -49,9 +51,9 @@ test_info_df = pd.read_csv(path_to_data + 'test_info.csv', index_col='mid')
 print("OK")
 
 print("\tPreprocess test data ... ", end="", flush=True)
-preprocessed_test_df = preprocessing.merge(test_df, test_info_df)
+preprocessed_test_df = tools.merge(test_df, test_info_df)
 preprocessed_test_df['date'] = (
-    preprocessing.preprocess_dates(preprocessed_test_df)
+    tools.preprocess_dates(preprocessed_test_df)
 )
 print("OK")
 

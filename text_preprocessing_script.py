@@ -1,5 +1,5 @@
 import pandas as pd
-import preprocessing
+import tools
 from time import time
 
 initial_time = time()
@@ -16,7 +16,7 @@ train_df = (
 print("OK")
 
 print("\tPreprocess train data ... ")
-preprocessed_training_df = preprocessing.clean_emails_bodies(train_df)
+preprocessed_training_df = tools.clean_email_bodies(train_df)
 print("\tOK")
 
 preprocessed_train_filename = "text_preprocessed_train.csv"
@@ -36,7 +36,7 @@ test_df = (
 print("\tOK")
 
 print("\tPreprocess test data ... ")
-preprocessed_testing_df = preprocessing.clean_emails_bodies(test_df)
+preprocessed_testing_df = tools.clean_email_bodies(test_df)
 print("OK")
 
 preprocessed_test_filename = "text_preprocessed_test.csv"

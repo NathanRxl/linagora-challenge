@@ -142,7 +142,6 @@ class LinagoraWinningPredictor:
 
     def _build_internal_train_sets(self, sender, X_train, y_train):
         i_Xtr = defaultdict(dict)
-        # i_Xtr = defaultdict(lambda : defaultdict(float))
         i_ytr = dict()
         sender_idx = X_train["sender"] == sender
         global_sender_ab_list = list(self.global_ab[sender].elements())
@@ -189,12 +188,6 @@ class LinagoraWinningPredictor:
                         / len(msg_recent_contacts)
                     )
 
-
-        # Compute dataframes from the features dict and the labels dict
-        # features_df = pd.DataFrame.from_dict(
-        #     data={"frequency_scores": i_Xtr},
-        #     orient='columns'
-        # )
         features_df = pd.DataFrame.from_dict(data=i_Xtr, orient='columns')
         labels_df = pd.DataFrame.from_dict(
             data={"labels": i_ytr},
@@ -388,7 +381,6 @@ class LinagoraWinningPredictor:
 
     def _build_internal_test_set(self, sender, X_test):
         # i_Xte for internal X test
-        # i_Xte = dict()
         i_Xte = defaultdict(lambda: defaultdict(float))
         sender_idx = X_test["sender"] == sender
         # Thanks God every sender in test appears in train
@@ -432,11 +424,6 @@ class LinagoraWinningPredictor:
                             / len(msg_recent_contacts)
                         )
 
-        # Compute dataframes from the features dict and the labels dict
-        # test_features_df = pd.DataFrame.from_dict(
-        #     data={"frequency_scores": i_Xte},
-        #     orient='columns',
-        # )
         test_features_df = pd.DataFrame.from_dict(data=i_Xte, orient='columns')
 
         # Return the internal test set
@@ -549,7 +536,6 @@ class LinagoraWinningPredictor:
                 recipients_list = (
                     test_features_df.loc[mid].index.tolist()
                 )
-                # i_Xte = test_features_df.loc[mid].as_matrix()
                 if self.lgbm[sender] == 1:
                     # Handle the case when there were no 0 in i_ytr
                     # In that case, the algorithm could not learn
@@ -558,13 +544,7 @@ class LinagoraWinningPredictor:
                     mid_pred_probas = self.lgbm[sender].predict_proba(i_Xte)[:, 1]
                     best_recipients = np.argsort(mid_pred_probas)[::-1][:10]
 
-                    # predictions[mid] = [
-                    #     recipients_list[recipient_index]
-                    #     for recipient_index in best_recipients
-                    # ]
-
                     unique_r_ab = np.array(recipients_list)
-                    # pdb.set_trace()
                     # Predict first the first names found in the body
                     truncated_body = (
                         text_tools.truncate_body(X_test.loc[mid]["body"])
@@ -627,295 +607,6 @@ class LinagoraWinningPredictor:
             print("execution time %.5f" % (time() - t0))
             n_prediction += 1
         return predictions
-
-
-class FrequencyPredictor:
-    def __init__(self, recency=None):
-        """
-        self.address_books:
-            type: dict
-            key: sender,
-            values: Counter(recipient, frequency of sending to this recipient))
-        """
-        self.address_books = dict()
-        self.all_train_senders = list()
-        self.recency = recency
-        self.recent_address_books = dict()
-
-    def fit(self, X_train, y_train, verbose=True):
-        # Save all unique sender names in X
-        self.all_train_senders = X_train["sender"].unique().tolist()
-
-        for sender_nb, sender in enumerate(self.all_train_senders):
-
-            # Save complete recipients counts
-            self.address_books[sender] = (
-                compute_ab(sender, X_train, y_train, recency=None)
-            )
-
-            # Save recent recipients counts
-            self.recent_address_books[sender] = (
-                compute_ab(sender, X_train, y_train, recency=self.recency)
-            )
-
-        if verbose:
-            # Compute and print some statistics about the train set
-            ab_mean_size = 0
-            nb_train_senders = len(self.all_train_senders)
-
-            for user in self.all_train_senders:
-                ab_mean_size += (
-                    len(self.address_books[user]) / nb_train_senders
-                )
-
-            print(
-                "\t\tNumber of unique senders in the train:",
-                nb_train_senders)
-            print("\t\tUser address book mean size:", int(ab_mean_size))
-
-    def predict(self, X_test):
-        # Will contain message ids and predictions for frequency predictions
-        sender_predictions = dict()
-
-        # Save all unique sender names in test
-        all_test_senders = X_test["sender"].unique().tolist()
-
-        for sender in all_test_senders:
-            if self.recency is not None:
-                recent_addrs_book_most_common = (
-                    self.recent_address_books[sender].most_common(10)
-                )
-                addrs_book_most_common = recent_addrs_book_most_common
-                nb_pred = len(recent_addrs_book_most_common)
-                if nb_pred < 10:
-                    address_book_filtered = {
-                        recipient: frequency
-                        for recipient, frequency
-                        in self.address_books[sender].items()
-                        if recipient not in recent_addrs_book_most_common
-                    }
-                    addrs_book_most_common += (
-                        Counter(address_book_filtered)
-                        .most_common(10 - nb_pred)
-                    )
-            else:
-                # Select most frequent recipients of the sender
-                addrs_book_most_common = self.address_books[sender].most_common(10)
-
-            most_frequent_recipients = (
-                [recipient for recipient, frequency in addrs_book_most_common]
-            )
-            # Message ids for which a recipient prediction is needed
-            sender_idx = X_test["sender"] == sender
-            mids_to_predict = (
-                [int(mid) for mid in X_test[sender_idx].index.tolist()]
-            )
-
-            most_frequent_predictions = []
-            for mid_to_predict in mids_to_predict:
-                # The predictions are always the same for a same sender
-                most_frequent_predictions.append(most_frequent_recipients)
-
-            sender_predictions[sender] = {
-                "mids": mids_to_predict,
-                "most_frequent": most_frequent_predictions
-            }
-
-        # Build the mids_prediction dict
-        frequency_mids_prediction = {}
-        for sender in sender_predictions.keys():
-            mids = sender_predictions[sender]["mids"]
-            frequency_predictions = sender_predictions[sender]["most_frequent"]
-
-            for mid, frequency_prediction in zip(mids, frequency_predictions):
-                frequency_mids_prediction[mid] = frequency_prediction
-
-        return frequency_mids_prediction
-
-
-class LinagoraTfidfPredictor:
-    def __init__(self):
-        """
-        self.address_books:
-            type: dict
-            key: sender,
-            values: Counter(recipient, frequency of sending to this recipient))
-        """
-        self.address_books = dict()
-        self.all_train_senders = list()
-        self.all_users = list()
-        self.train_senders_tfidf = dict()
-        self.train_senders_vectorizers = dict()
-        self.train_senders_recipients = dict()
-        self.overfit = True
-
-    def fit(self, X_train, y_train):
-        # Save all unique sender names in X
-        self.all_train_senders = X_train["sender"].unique().tolist()
-        # Save all unique user names
-        self.all_users = set(self.all_train_senders)
-
-        for sender_nb, sender in enumerate(self.all_train_senders):
-            self.train_senders_recipients[sender] = []
-
-            sender_recipients = []
-            sender_idx = X_train["sender"] == sender
-            for recipients in y_train[sender_idx]["recipients"].tolist():
-                sender_recipients.extend(
-                    [recipient
-                     for recipient in recipients.split(' ')
-                     if '@' in recipient]
-                )
-                self.train_senders_recipients[sender].append(
-                    [recipient for recipient in recipients.split(' ')
-                               if '@' in recipient]
-                )
-
-            # Save recipients counts
-            self.address_books[sender] = Counter(sender_recipients)
-
-            # Save all unique recipient names
-            for recipient in sender_recipients:
-                self.all_users.add(recipient)
-
-        # Compute the tfidf vectors
-        for sender in self.all_train_senders:
-            sender_idx = X_train["sender"] == sender
-            X_train_sender = X_train[sender_idx]
-            sender_messages = X_train_sender["body"].tolist()
-            n_sender_mesages = len(sender_messages)
-
-            if self.overfit:
-                tfidf_vectorizer = TfidfVectorizer(
-                    strip_accents="ascii",
-                    # stop_words="english",
-                    # stop_words=stopwords.words('english'),
-                )
-
-                tfidf_matrix = tfidf_vectorizer.fit_transform(sender_messages)
-                tfidf_matrix = tfidf_matrix.todense()
-
-            else:
-                from sklearn.model_selection import KFold
-                n_splits = 10
-                kf = KFold(n_splits=n_splits, shuffle=True, random_state=2)
-                complete_train_indexes = np.arange(n_sender_mesages)
-                ct_split_indexes = kf.split(complete_train_indexes)
-
-                n_tfidf_features = 300
-                tfidf_matrix = np.empty((n_sender_mesages, n_tfidf_features))
-
-                for keep_fold_indexes, leave_fold_indexes in ct_split_indexes:
-                    keep_messages = np.array(sender_messages)[keep_fold_indexes]
-                    leave_messages = np.array(sender_messages)[leave_fold_indexes]
-
-                    tfidf_vectorizer = TfidfVectorizer(
-                        strip_accents="ascii",
-                        max_features=n_tfidf_features,
-                    )
-                    tfidf_vectorizer.fit(keep_messages)
-                    leave_tfidf = tfidf_vectorizer.transform(leave_messages).todense()
-                    tfidf_matrix[leave_fold_indexes, :leave_tfidf.shape[1]] = leave_tfidf
-
-
-                tfidf_vectorizer = TfidfVectorizer(
-                    strip_accents="ascii",
-                    max_features=n_tfidf_features,
-                    # stop_words="english",
-                    # stop_words=stopwords.words('english'),
-                )
-                tfidf_vectorizer.fit(sender_messages)
-
-            self.train_senders_tfidf[sender] = tfidf_matrix
-            self.train_senders_vectorizers[sender] = tfidf_vectorizer
-
-
-        # Ultimately change the format of all_users
-        self.all_users = list(self.all_users)
-
-    def predict(self, X_test):
-        # Will contain message ids and predictions for frequency predictions
-        sender_predictions = dict()
-
-        # Save all unique sender names in test
-        all_test_senders = X_test["sender"].unique().tolist()
-
-        mids_prediction = {}
-
-        for sender in all_test_senders:
-            if sender not in self.all_train_senders:
-                continue
-
-            vectorizer = self.train_senders_vectorizers[sender]
-            train_tfidf_matrix = self.train_senders_tfidf[sender]
-            train_recipients = self.train_senders_recipients[sender]
-
-            sender_idx = X_test["sender"] == sender
-            X_test_sender = X_test[sender_idx]
-            sender_messages = X_test_sender["body"].tolist()
-            n_test_sender_messages = len(sender_messages)
-
-            test_sender_mids = X_test_sender.index.tolist()
-
-            if self.overfit:
-                test_tfidf_matrix = vectorizer.transform(sender_messages)
-                test_tfidf_matrix = test_tfidf_matrix.todense()
-
-            else:
-                n_tfidf_features = 300
-                test_tfidf_small_matrix = vectorizer.transform(sender_messages).todense()
-                test_tfidf_matrix = np.empty((n_test_sender_messages, n_tfidf_features))
-                test_tfidf_matrix[:, :test_tfidf_small_matrix.shape[1]] = test_tfidf_small_matrix
-
-            distances = test_tfidf_matrix.dot(train_tfidf_matrix.T)
-            order = np.argsort(distances)
-            order = np.fliplr(order)
-
-            nb_train_messages = order.shape[1]
-
-            for i, mid_to_predict in enumerate(test_sender_mids):
-                n_selected_messages = 30
-                recipients_score = dict()
-                for recipient in self.address_books[sender].keys():
-                    recipients_score[recipient] = 0
-
-                for j in range(n_selected_messages):
-                    selection_idx = j
-                    if selection_idx >= nb_train_messages:
-                        continue
-                    train_message_idx = order[i, selection_idx]
-                    message_recipients = train_recipients[train_message_idx]
-                    for recipient in message_recipients:
-                        recipients_score[recipient] += distances[i, train_message_idx]
-
-
-
-                best_recipients = sorted(
-                    recipients_score.items(),
-                    key=operator.itemgetter(1),
-                    reverse=True,
-                )
-                best_recipients = [recipient for recipient, score in best_recipients]
-                chosen_recipients = best_recipients[:10]
-
-                # Fill predictions using address_book
-                if len(chosen_recipients) < 10:
-                    address_book = self.address_books[sender]
-                    if len(address_book.keys()) >= 10:
-                        sorted_address_book = sorted(
-                            address_book.items(),
-                            key=operator.itemgetter(1),
-                            reverse=True,
-                        )
-                        for recipient, recipient_score in sorted_address_book:
-                            if recipient not in chosen_recipients:
-                                chosen_recipients += [recipient]
-                            if len(chosen_recipients) == 10:
-                                break
-
-                mids_prediction[mid_to_predict] = chosen_recipients
-
-        return mids_prediction
 
 
 class LinagoraKnnPredictor:

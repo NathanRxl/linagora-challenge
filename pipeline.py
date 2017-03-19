@@ -3,9 +3,7 @@ import numpy as np
 from time import time
 
 from general_tools import split_xy, true_recipients, Submissioner
-from linagora_models import (FrequencyPredictor, LinagoraWinningPredictor,
-    LinagoraTfidfPredictor, LinagoraKnnPredictor
-)
+from linagora_models import LinagoraWinningPredictor, LinagoraKnnPredictor
 from model_evaluation import metrics
 
 initial_time = time()

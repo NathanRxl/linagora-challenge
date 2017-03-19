@@ -5,9 +5,8 @@ from sklearn.model_selection import KFold
 
 from model_evaluation import metrics
 from general_tools import split_xy, true_recipients
-from linagora_models import (FrequencyPredictor, LinagoraWinningPredictor,
-    LinagoraTfidfPredictor, LinagoraKnnPredictor
-)
+from linagora_models import  LinagoraWinningPredictor, LinagoraKnnPredictor
+
 
 
 initial_time = time()
